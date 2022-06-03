@@ -26,6 +26,22 @@
 }}";
         }
 
+        public static string GetReadParameterDtoEntityPropText(string solutionDirectory, string classNamespace, EntityProperty entity, Dto dto, string projectBaseName)
+        {
+            var sharedDtoClassPath = ClassPathHelper.SharedDtoClassPath(solutionDirectory, "");
+
+            return @$"namespace {classNamespace}
+{{
+    using {sharedDtoClassPath.ClassNamespace};
+
+    public class {Utilities.GetDtoName(entity.Name, dto)} : BasePaginationParameters
+    {{
+        public string Filters {{ get; set; }}
+        public string SortOrder {{ get; set; }}
+    }}
+}}";
+        }
+
         public static string GetDtoText(IClassPath dtoClassPath, Entity entity, Dto dto)
         {
             var propString = dto is Dto.Read ? $@"    public Guid Id {{ get; set; }}{Environment.NewLine}" : "";
@@ -50,7 +66,26 @@
     }}
 }}";
         }
-        
+
+        public static string GetPropertyDtoText(IClassPath dtoClassPath, EntityProperty entity, Dto dto)
+        {
+            var propString = (dto is Dto.Read && !entity.IsJSONObject && !entity.IsJSONObjectList) ? $@"    public Guid Id {{ get; set; }}{Environment.NewLine}" : "";
+            propString += DtoPropBuilder(entity.Properties, dto);
+
+
+
+
+            return @$"namespace {dtoClassPath.ClassNamespace}
+{{
+    using System.Collections.Generic;
+    using System;
+
+    public class {Utilities.GetDtoName(entity.Name, dto)} 
+    {{
+    {propString}
+    }}
+}}";
+        }
         public static string DtoPropBuilder(List<EntityProperty> props, Dto dto)
         {
             var propString = "";
@@ -60,14 +95,19 @@
                     continue;
                 if (props[eachProp].IsForeignKey && props[eachProp].IsMany)
                     continue;
-                if (!props[eachProp].IsPrimativeType)
-                    continue;
+               
+
                 var guidDefault = dto == Dto.Creation && props[eachProp].Type.IsGuidPropertyType()
                     ? " = Guid.NewGuid();"
                     : "";
 
                 string newLine = eachProp == props.Count - 1 ? "" : Environment.NewLine;
-                propString += $@"        public {props[eachProp].Type} {props[eachProp].Name} {{ get; set; }}{guidDefault}{newLine}";
+                if (props[eachProp].IsJSONObjectList)
+                    propString += $@"        public List<{props[eachProp].Name}Dto> {props[eachProp].Name} {{ get; set; }}{guidDefault}{newLine}";
+                else if (props[eachProp].IsJSONObject)
+                    propString += $@"        public {props[eachProp].Name}Dto {props[eachProp].Name} {{ get; set; }}{guidDefault}{newLine}";
+                else
+                    propString += $@"        public {props[eachProp].Type} {props[eachProp].Name} {{ get; set; }}{guidDefault}{newLine}";
             }
 
             return propString;

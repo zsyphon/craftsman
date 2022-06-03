@@ -41,9 +41,9 @@
                 ApiRouteModifier.AddRoutes(testDirectory, entity, projectBaseName); // api routes always added to testing by default. too much of a pain to scaffold dynamically
                 
                 var isProtected = entity.Features.Any(f => f.IsProtected); // <-- one more example of why it would be nice to have specific endpoints for each feature 😤
-                if(entity.Features.Count > 0)
+                if (entity.Features.Count > 0)
                     ControllerBuilder.CreateController(solutionDirectory, srcDirectory, entity.Name, entity.Plural, projectBaseName, isProtected, fileSystem);
-                
+
                 // TODO refactor to factory?
                 foreach (var feature in entity.Features)
                 {
@@ -55,7 +55,7 @@
             }
         }
 
-        public static void ScaffoldRolePermissions(string solutionDirectory, 
+        public static void ScaffoldRolePermissions(string solutionDirectory,
             string srcDirectory,
             string testDirectory,
             string projectBaseName,
@@ -79,20 +79,20 @@
                 {
                     new() { Name = "Role", Type = "string", CanFilter = false, CanSort = false },
                     new() { Name = "Permission", Type = "string", CanFilter = false, CanSort = false }
-                } 
+                }
             };
-            
+
             EntityBuilder.CreateEntity(solutionDirectory, srcDirectory, entity, projectBaseName, fileSystem);
             DtoBuilder.CreateDtos(solutionDirectory, entity, projectBaseName);
             ProfileBuilder.CreateProfile(srcDirectory, entity, projectBaseName);
             ApiRouteModifier.AddRoutes(testDirectory, entity, projectBaseName);
-            
+
             // custom validator
             ValidatorBuilder.CreateRolePermissionValidators(solutionDirectory, srcDirectory, projectBaseName, entity, fileSystem);
-                
-            if(entity.Features.Count > 0)
+
+            if (entity.Features.Count > 0)
                 ControllerBuilder.CreateController(solutionDirectory, srcDirectory, entity.Name, entity.Plural, projectBaseName, true, fileSystem);
-                
+
             // TODO refactor to factory?
             foreach (var feature in entity.Features)
             {
@@ -103,7 +103,7 @@
             FakesBuilder.CreateRolePermissionFakes(solutionDirectory, testDirectory, projectBaseName, entity, fileSystem);
             RolePermissionsUnitTestBuilder.CreateTests(solutionDirectory, testDirectory, srcDirectory, projectBaseName, fileSystem);
             UserPolicyHandlerIntegrationTests.CreateTests(solutionDirectory, testDirectory, srcDirectory, projectBaseName, fileSystem);
-            
+
             // need to do db modifier
             DbContextModifier.AddDbSet(srcDirectory, new List<Entity>() { entity }, dbContextName, projectBaseName);
         }
@@ -115,15 +115,15 @@
             if (!File.Exists(controllerClassPath.FullClassPath))
                 ControllerBuilder.CreateController(solutionDirectory, srcDirectory, entity.Name, entity.Plural, projectBaseName, feature.IsProtected, fileSystem);
 
-            if(feature.IsProtected)
+            if (feature.IsProtected)
                 PermissionsModifier.AddPermission(srcDirectory, feature.PermissionName, projectBaseName);
-            
+
             if (feature.Type == FeatureType.AddRecord.Name)
             {
                 CommandAddRecordBuilder.CreateCommand(solutionDirectory, srcDirectory, entity, dbContextName, projectBaseName);
                 AddCommandTestBuilder.CreateTests(testDirectory, srcDirectory, entity, projectBaseName);
                 CreateEntityTestBuilder.CreateTests(solutionDirectory, testDirectory, entity, feature.IsProtected, projectBaseName, fileSystem);
-                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.AddRecord, entity, addSwaggerComments, 
+                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.AddRecord, entity, addSwaggerComments,
                     feature, projectBaseName);
             }
 
@@ -132,7 +132,7 @@
                 QueryGetRecordBuilder.CreateQuery(solutionDirectory, srcDirectory, entity, dbContextName, projectBaseName);
                 GetRecordQueryTestBuilder.CreateTests(solutionDirectory, testDirectory, srcDirectory, entity, projectBaseName);
                 GetEntityRecordTestBuilder.CreateTests(solutionDirectory, testDirectory, entity, feature.IsProtected, projectBaseName, fileSystem);
-                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.GetRecord, entity, addSwaggerComments, 
+                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.GetRecord, entity, addSwaggerComments,
                     feature, projectBaseName);
             }
 
@@ -141,43 +141,43 @@
                 QueryGetListBuilder.CreateQuery(solutionDirectory, srcDirectory, entity, dbContextName, projectBaseName);
                 GetListQueryTestBuilder.CreateTests(testDirectory, solutionDirectory, entity, projectBaseName);
                 GetEntityListTestBuilder.CreateTests(solutionDirectory, testDirectory, entity, feature.IsProtected, projectBaseName, fileSystem);
-                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.GetList, entity, addSwaggerComments, 
+                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.GetList, entity, addSwaggerComments,
                     feature, projectBaseName);
             }
-            
+
             if (feature.Type == FeatureType.DeleteRecord.Name)
             {
                 CommandDeleteRecordBuilder.CreateCommand(solutionDirectory, srcDirectory, entity, dbContextName, projectBaseName);
                 DeleteCommandTestBuilder.CreateTests(solutionDirectory, testDirectory, srcDirectory, entity, projectBaseName, useSoftDelete);
                 DeleteEntityTestBuilder.CreateTests(solutionDirectory, testDirectory, entity, feature.IsProtected, projectBaseName, fileSystem);
-                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.DeleteRecord, entity, addSwaggerComments, 
+                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.DeleteRecord, entity, addSwaggerComments,
                     feature, projectBaseName);
             }
-            
+
             if (feature.Type == FeatureType.UpdateRecord.Name)
             {
                 CommandUpdateRecordBuilder.CreateCommand(solutionDirectory, srcDirectory, entity, dbContextName, projectBaseName);
                 PutCommandTestBuilder.CreateTests(solutionDirectory, testDirectory, srcDirectory, entity, projectBaseName);
                 PutEntityTestBuilder.CreateTests(solutionDirectory, testDirectory, entity, feature.IsProtected, projectBaseName, fileSystem);
-                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.UpdateRecord, entity, addSwaggerComments, 
+                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.UpdateRecord, entity, addSwaggerComments,
                     feature, projectBaseName);
             }
-            
+
             if (feature.Type == FeatureType.PatchRecord.Name)
             {
                 CommandPatchRecordBuilder.CreateCommand(solutionDirectory, srcDirectory, entity, dbContextName, projectBaseName);
                 PatchCommandTestBuilder.CreateTests(solutionDirectory, testDirectory, srcDirectory, entity, projectBaseName, fileSystem);
                 PatchEntityTestBuilder.CreateTests(solutionDirectory, testDirectory, entity, feature.IsProtected, projectBaseName, fileSystem);
-                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.PatchRecord, entity, addSwaggerComments, 
+                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.PatchRecord, entity, addSwaggerComments,
                     feature, projectBaseName);
             }
-            
+
             if (feature.Type == FeatureType.AddListByFk.Name)
             {
                 CommandAddListBuilder.CreateCommand(solutionDirectory, srcDirectory, entity, dbContextName, projectBaseName, feature, fileSystem);
                 AddListCommandTestBuilder.CreateTests(solutionDirectory, testDirectory, srcDirectory, entity, feature, projectBaseName, fileSystem);
                 AddListTestBuilder.CreateTests(solutionDirectory, testDirectory, entity, feature, projectBaseName, fileSystem);
-                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.AddListByFk, entity, addSwaggerComments, 
+                ControllerModifier.AddEndpoint(srcDirectory, FeatureType.AddListByFk, entity, addSwaggerComments,
                     feature, projectBaseName);
             }
 

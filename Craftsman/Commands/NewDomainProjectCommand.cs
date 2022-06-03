@@ -51,7 +51,7 @@
                 CreateNewDomainProject(domainDirectory, fileSystem, domainProject);
 
                 AnsiConsole.MarkupLine($"{Environment.NewLine}[bold yellow1]Your domain project is ready! Build something amazing. [/]");
-                StarGithubRequest();
+         //       StarGithubRequest();
             }
             catch (Exception e)
             {

@@ -10,7 +10,7 @@
             "request": "launch",
             "preLaunchTask": "build",
             "program": "${workspaceFolder}/Craftsman/bin/Debug/net6.0/Craftsman.dll",
-            "args": "new:domain C:\\Users\\jordan.crafton\\Documents\\TradingPartnerPhoneAddress.yaml",
+            "args": "new:domain C:\\Users\\jordan.crafton\\Documents\\TradingPartnerWithDocument.yaml",
             "cwd": "${workspaceFolder}/Craftsman",
             "console": "internalConsole",
             "stopAtEntry": false

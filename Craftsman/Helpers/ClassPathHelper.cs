@@ -1,6 +1,9 @@
-﻿namespace Craftsman.Helpers
+﻿using System.Text;
+namespace Craftsman.Helpers
 {
     using Craftsman.Models;
+    using System;
+    using System.Collections.Generic;
     using System.IO;
 
     public static class ClassPathHelper
@@ -329,9 +332,12 @@
 
         public static ClassPath DtoClassPath(string solutionDirectory, string className, string entityName, string projectBaseName)
         {
-            return new ClassPath(solutionDirectory, Path.Combine(SharedKernelProjName, "Dtos", projectBaseName, entityName), className);
+            return new ClassPath(solutionDirectory, Path.Combine(SharedKernelProjName, "Dtos", projectBaseName, entityName), className);;
         }
-
+    public static ClassPath DtoEntityPropertyClassPath(string solutionDirectory, string className, string parentEntityName, string projectBaseName)
+        {
+            return new ClassPath(solutionDirectory, Path.Combine(SharedKernelProjName, "Dtos", projectBaseName,parentEntityName), className);
+        }
         public static ClassPath SharedDtoClassPath(string solutionDirectory, string className)
         {
             var withSuffix = ApiProjectSuffix.Length > 0 ? $".{ApiProjectSuffix}" : "";

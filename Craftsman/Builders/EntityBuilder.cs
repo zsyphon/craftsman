@@ -19,6 +19,7 @@
             Utilities.CreateFile(classPath, fileText, fileSystem);
         }
 
+
         public static void CreateBaseEntity(string srcDirectory, string projectBaseName, bool useSoftDelete, IFileSystem fileSystem)
         {
             var classPath = ClassPathHelper.EntityClassPath(srcDirectory, $"BaseEntity.cs", "", projectBaseName);
@@ -50,7 +51,6 @@ using {classPath.ClassNamespace};";
             var profileClassPath = ClassPathHelper.ProfileClassPath(srcDirectory, $"", entity.Plural, projectBaseName);
             var dtoClassPath = ClassPathHelper.DtoClassPath(solutionDirectory, $"", entity.Name, projectBaseName);
             var validatorClassPath = ClassPathHelper.ValidationClassPath(srcDirectory, $"", entity.Plural, projectBaseName);
-
             return @$"namespace {classNamespace};
 
 using {dtoClassPath.ClassNamespace};
@@ -161,12 +161,16 @@ public abstract class BaseEntity
                     ? Environment.NewLine
                     : $"{Environment.NewLine}{Environment.NewLine}";
 
-                if(property.IsPrimativeType || property.IsMany)
+                if (property.IsPrimativeType || property.IsMany)
                     propString += $@"    public {property.Type} {property.Name} {{ get; private set; }}{defaultValue}{newLine}";
 
-               if(property.Type.Contains("JSON"))
-                    propString += $@"    public string {property.Name} {{ get; private set; }}{defaultValue}{newLine}";
+                if (property.IsJSON && !property.IsJSONObject  && !property.IsJSONObjectList)
+                    propString += $@"    public {property.Type} {property.Name} {{ get; private set; }}{defaultValue}{newLine}";
 
+                if (property.IsJSONObject)
+                {
+                    propString += $@"    public {property.Name}Dto {property.Name} {{ get; private set; }}{defaultValue}{newLine}";
+                }
                 propString += GetForeignProp(property);
             }
 
@@ -187,14 +191,14 @@ public abstract class BaseEntity
     [IgnoreDataMember]
     [ForeignKey(""{entityProperty.ForeignEntityName}"")]{Environment.NewLine}";
 
-            if((entityProperty.IsMany || !entityProperty.IsPrimativeType) && !entityProperty.Type.Contains("JSON"))
+            if ((entityProperty.IsMany || !entityProperty.IsPrimativeType) && !entityProperty.IsJSON && !entityProperty.IsJSONObject && !entityProperty.IsJSONObjectList)
                 attributeString += $@"    [JsonIgnore]
     [IgnoreDataMember]{Environment.NewLine}";
             if (entityProperty.CanFilter || entityProperty.CanSort)
                 attributeString += @$"    [Sieve(CanFilter = {entityProperty.CanFilter.ToString().ToLower()}, CanSort = {entityProperty.CanSort.ToString().ToLower()})]{Environment.NewLine}";
             if (!string.IsNullOrEmpty(entityProperty.ColumnName))
                 attributeString += @$"    [Column(""{entityProperty.ColumnName}"")]{Environment.NewLine}";
-            if(entityProperty.Type.Contains("JSON"))
+            if (entityProperty.IsJSON || entityProperty.IsJSONObject || entityProperty.IsJSONObjectList)
                 attributeString += @$"    [Column(TypeName = ""jsonb"")]{Environment.NewLine}";
             return attributeString;
         }

@@ -1,4 +1,5 @@
-﻿using Craftsman.Helpers;
+﻿using System.Collections.Generic;
+using Craftsman.Helpers;
 
 namespace Craftsman.Models
 {
@@ -105,6 +106,21 @@ namespace Craftsman.Models
                    || Type.StartsWith("List<");
         }
 
+        public bool IsJSON 
+        {
+            get => Type.ToLower().Trim().Replace("?", "").Equals("json");
+        }
+
+        public bool IsJSONObject 
+        {
+            get => Type.ToLower().Trim().Replace("?", "").Equals("jsonobject");
+        }
+
+         public bool IsJSONObjectList
+        {
+            get => Type.ToLower().Trim().Replace("?", "").Equals("jsonobjectlist");
+        }
+
         /// <summary>
         /// Captures the name of the entity this property is linked to as a foreign key.
         /// </summary>
@@ -141,5 +157,10 @@ namespace Craftsman.Models
                    Type = "Guid"
                };
         }
+
+                /// <summary>
+        /// List of properties associated to the entity
+        /// </summary>
+        public List<EntityProperty> Properties { get; set; } = new List<EntityProperty>();
     }
 }
