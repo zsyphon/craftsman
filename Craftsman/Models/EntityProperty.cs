@@ -9,6 +9,8 @@ namespace Craftsman.Models
         private string _type = "string";
         private string _name;
 
+        private string _schema;
+
         /// <summary>
         /// Name of the property
         /// </summary>
@@ -27,6 +29,11 @@ namespace Craftsman.Models
             set => _type = Utilities.PropTypeCleanup(value);
         }
 
+        public string Schema
+        {
+            get => _schema;
+            set => _schema = value;
+        }
         /// <summary>
         /// Determines if the property will be filterable by the API
         /// </summary>
@@ -103,6 +110,11 @@ namespace Craftsman.Models
                    || Type.StartsWith("Dictionary<")
                    || Type.StartsWith("IDictionary<")
                    || Type.StartsWith("List<");
+        }
+
+        public bool IsJsonSchema
+        {
+            get => Type.StartsWith("JsonSchema");
         }
 
         /// <summary>

@@ -106,6 +106,7 @@
                 projectBaseName,
                 template.Entities,
                 template.DbContextName,
+                "",
                 template.AddSwaggerComments,
                 useSoftDelete,
                 fileSystem);

@@ -50,7 +50,7 @@
     }}
 }}";
         }
-        
+
         public static string DtoPropBuilder(List<EntityProperty> props, Dto dto)
         {
             var propString = "";
@@ -60,14 +60,17 @@
                     continue;
                 if (props[eachProp].IsForeignKey && props[eachProp].IsMany)
                     continue;
-                if (!props[eachProp].IsPrimativeType)
-                    continue;
+
                 var guidDefault = dto == Dto.Creation && props[eachProp].Type.IsGuidPropertyType()
                     ? " = Guid.NewGuid();"
                     : "";
 
                 string newLine = eachProp == props.Count - 1 ? "" : Environment.NewLine;
-                propString += $@"        public {props[eachProp].Type} {props[eachProp].Name} {{ get; set; }}{guidDefault}{newLine}";
+               
+                if (props[eachProp].IsJsonSchema)
+                    propString += $@"        public {props[eachProp].Name} {props[eachProp].Name} {{ get; set; }}{guidDefault}{newLine}";
+                else
+                    propString += $@"        public {props[eachProp].Type} {props[eachProp].Name} {{ get; set; }}{guidDefault}{newLine}";
             }
 
             return propString;

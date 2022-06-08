@@ -25,6 +25,10 @@
 
   <ItemGroup>
     <PackageReference Include=""FluentValidation"" Version=""10.3.6"" />
+    <PackageReference Include=""Newtonsoft.Json"" Version=""13.0.1"" />
+    <PackageReference Include=""NJsonSchema"" Version=""10.7.2"" />
+    <PackageReference Include=""System.ComponentModel.Annotations"" Version=""6.0.0-preview.4.21253.7"" />
+    <PackageReference Include=""System.Text.Json"" Version=""7.0.0-preview.4.22229.4"" />
   </ItemGroup>
 
 </Project>";

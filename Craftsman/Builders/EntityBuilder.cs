@@ -164,8 +164,8 @@ public abstract class BaseEntity
                 if(property.IsPrimativeType || property.IsMany)
                     propString += $@"    public {property.Type} {property.Name} {{ get; private set; }}{defaultValue}{newLine}";
 
-               if(property.Type.Contains("JSON"))
-                    propString += $@"    public string {property.Name} {{ get; private set; }}{defaultValue}{newLine}";
+               if(property.IsJsonSchema)
+                    propString += $@"    public {property.Name} {property.Name} {{ get; private set; }}{defaultValue}{newLine}";
 
                 propString += GetForeignProp(property);
             }
@@ -194,7 +194,7 @@ public abstract class BaseEntity
                 attributeString += @$"    [Sieve(CanFilter = {entityProperty.CanFilter.ToString().ToLower()}, CanSort = {entityProperty.CanSort.ToString().ToLower()})]{Environment.NewLine}";
             if (!string.IsNullOrEmpty(entityProperty.ColumnName))
                 attributeString += @$"    [Column(""{entityProperty.ColumnName}"")]{Environment.NewLine}";
-            if(entityProperty.Type.Contains("JSON"))
+            if(entityProperty.IsJsonSchema)
                 attributeString += @$"    [Column(TypeName = ""jsonb"")]{Environment.NewLine}";
             return attributeString;
         }

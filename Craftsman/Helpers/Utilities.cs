@@ -387,6 +387,7 @@ using {parentClassPath.ClassNamespace};";
             string solutionDirectory,
             string projectName,
             string dbName,
+            string namingConvention,
             List<ApiEnvironment> environments,
             SwaggerConfig swaggerConfig,
             int port,

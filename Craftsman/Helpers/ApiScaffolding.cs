@@ -69,7 +69,7 @@
                 fileSystem
             );
             ApiRoutesBuilder.CreateClass(testDirectory, projectBaseName, fileSystem);
-            
+
             if (template.AddJwtAuthentication)
             {
                 PermissionsBuilder.GetPermissions(srcDirectory, projectBaseName, fileSystem); // <-- needs to run before entity features
@@ -81,11 +81,12 @@
                     testDirectory,
                     projectBaseName,
                     template.DbContext.ContextName,
+                    template.DbContext.NamingConvention,
                     template.SwaggerConfig.AddSwaggerComments,
                     template.UseSoftDelete,
                     fileSystem);
             }
-            
+
             //entities
             EntityScaffolding.ScaffoldEntities(solutionDirectory,
                 srcDirectory,
@@ -93,6 +94,7 @@
                 projectBaseName,
                 template.Entities,
                 template.DbContext.ContextName,
+                template.DbContext.NamingConvention,
                 template.SwaggerConfig.AddSwaggerComments,
                 template.UseSoftDelete,
                 fileSystem);
@@ -102,6 +104,7 @@
                 srcDirectory,
                 projectBaseName,
                 template.DbContext.DatabaseName,
+                template.DbContext.NamingConvention,
                 template.Environments,
                 template.SwaggerConfig,
                 template.Port,
@@ -141,7 +144,7 @@
 
             if (template.Producers.Count > 0)
                 AddProducerCommand.AddProducers(template.Producers, projectBaseName, solutionDirectory, srcDirectory, testDirectory, fileSystem);
-            
+
             DockerBuilders.AddBoundaryToDockerCompose(solutionDirectory, template.DockerConfig);
         }
     }

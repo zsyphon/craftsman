@@ -27,6 +27,7 @@
             string projectBaseName,
             List<Entity> entities,
             string dbContextName,
+            string namingConvention,
             bool addSwaggerComments,
             bool useSoftDelete,
             IFileSystem fileSystem)
@@ -35,7 +36,7 @@
             {
                 // not worrying about DTOs, profiles, validators, fakers - they are all added by default
                 EntityBuilder.CreateEntity(solutionDirectory, srcDirectory, entity, projectBaseName, fileSystem);
-                DtoBuilder.CreateDtos(solutionDirectory, entity, projectBaseName);
+                DtoBuilder.CreateDtosAsync(solutionDirectory, entity, projectBaseName, namingConvention);
                 ValidatorBuilder.CreateValidators(solutionDirectory, srcDirectory, projectBaseName, entity);
                 ProfileBuilder.CreateProfile(srcDirectory, entity, projectBaseName);
                 ApiRouteModifier.AddRoutes(testDirectory, entity, projectBaseName); // api routes always added to testing by default. too much of a pain to scaffold dynamically
@@ -60,6 +61,7 @@
             string testDirectory,
             string projectBaseName,
             string dbContextName,
+            string namingConvention,
             bool addSwaggerComments,
             bool useSoftDelete,
             IFileSystem fileSystem)
@@ -83,7 +85,7 @@
             };
             
             EntityBuilder.CreateEntity(solutionDirectory, srcDirectory, entity, projectBaseName, fileSystem);
-            DtoBuilder.CreateDtos(solutionDirectory, entity, projectBaseName);
+            DtoBuilder.CreateDtosAsync(solutionDirectory, entity, projectBaseName, namingConvention);
             ProfileBuilder.CreateProfile(srcDirectory, entity, projectBaseName);
             ApiRouteModifier.AddRoutes(testDirectory, entity, projectBaseName);
             
