@@ -1,60 +1,67 @@
-﻿namespace Craftsman.Builders.Tests.Utilities
+﻿namespace Craftsman.Builders.Tests.Utilities;
+
+using Domain;
+using Helpers;
+using Services;
+
+public class IntegrationTestFixtureBuilder
 {
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using System;
-    using System.IO.Abstractions;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class IntegrationTestFixtureBuilder
+    public IntegrationTestFixtureBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateFixture(string solutionDirectory, string projectBaseName, string dbContextName, string dbName, string provider, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.IntegrationTestProjectRootClassPath(solutionDirectory, "TestFixture.cs", projectBaseName);
-            var fileText = GetFixtureText(classPath.ClassNamespace, solutionDirectory, projectBaseName, dbContextName, dbName, provider);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
+        _utilities = utilities;
+    }
 
-        public static string GetFixtureText(string classNamespace, string solutionDirectory, string projectBaseName, string dbContextName, string dbName, string provider)
-        {
-            var apiClassPath = ClassPathHelper.WebApiProjectClassPath(solutionDirectory, projectBaseName);
-            var contextClassPath = ClassPathHelper.DbContextClassPath(solutionDirectory, "", projectBaseName);
-            var testUtilsClassPath = ClassPathHelper.IntegrationTestUtilitiesClassPath(solutionDirectory, projectBaseName, "");
-            var utilsClassPath = ClassPathHelper.WebApiResourcesClassPath(solutionDirectory, "", projectBaseName);
-            var servicesClassPath = ClassPathHelper.WebApiServicesClassPath(solutionDirectory, "", projectBaseName);
+    public void CreateFixture(string testDirectory, string srcDirectory, string projectBaseName, string dbContextName, DbProvider provider)
+    {
+        var classPath = ClassPathHelper.IntegrationTestProjectRootClassPath(testDirectory, "TestFixture.cs", projectBaseName);
+        var fileText = GetFixtureText(classPath.ClassNamespace, testDirectory, srcDirectory, projectBaseName, dbContextName, provider);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            var usingStatement = Enum.GetName(typeof(DbProvider), DbProvider.Postgres) == provider
-                ? $@"
+    public static string GetFixtureText(string classNamespace, string testDirectory, string srcDirectory, string projectBaseName, string dbContextName, DbProvider provider)
+    {
+        var apiClassPath = ClassPathHelper.WebApiProjectClassPath(srcDirectory, projectBaseName);
+        var contextClassPath = ClassPathHelper.DbContextClassPath(srcDirectory, "", projectBaseName);
+        var testUtilsClassPath = ClassPathHelper.IntegrationTestUtilitiesClassPath(testDirectory, projectBaseName, "");
+        var utilsClassPath = ClassPathHelper.WebApiResourcesClassPath(srcDirectory, "", projectBaseName);
+        var servicesClassPath = ClassPathHelper.WebApiServicesClassPath(srcDirectory, "", projectBaseName);
+        var configClassPath = ClassPathHelper.WebApiServiceExtensionsClassPath(srcDirectory, "", projectBaseName);
+
+        var usingStatement = provider == DbProvider.Postgres
+            ? $@"
 using Npgsql;"
-                : null;
+            : null;
 
-            var checkpoint = Enum.GetName(typeof(DbProvider), DbProvider.Postgres) == provider
-                ? $@"_checkpoint = new Checkpoint
+        var checkpoint = provider == DbProvider.Postgres
+            ? $@"_checkpoint = new Checkpoint
         {{
-            TablesToIgnore = new[] {{ ""__EFMigrationsHistory"" }},
+            TablesToIgnore = new Table[] {{ ""__EFMigrationsHistory"" }},
             SchemasToExclude = new[] {{ ""information_schema"", ""pg_subscription"", ""pg_catalog"", ""pg_toast"" }},
             DbAdapter = DbAdapter.Postgres
         }};"
-                : $@"_checkpoint = new Checkpoint
+            : $@"_checkpoint = new Checkpoint
         {{
-            TablesToIgnore = new[] {{ ""__EFMigrationsHistory"" }},
+            TablesToIgnore = new Table[] {{ ""__EFMigrationsHistory"" }},
         }};";
 
-            var resetString = Enum.GetName(typeof(DbProvider), DbProvider.Postgres) == provider
-                ? $@"using var conn = new NpgsqlConnection(Environment.GetEnvironmentVariable(""DB_CONNECTION_STRING""));
+        var resetString = provider == DbProvider.Postgres
+            ? $@"using var conn = new NpgsqlConnection(Environment.GetEnvironmentVariable(""DB_CONNECTION_STRING""));
         await conn.OpenAsync();
         await _checkpoint.Reset(conn);"
-                : $@"await _checkpoint.Reset(Environment.GetEnvironmentVariable(""DB_CONNECTION_STRING""));";
+            : $@"await _checkpoint.Reset(Environment.GetEnvironmentVariable(""DB_CONNECTION_STRING""));";
 
-            return @$"namespace {classNamespace};
+        return @$"namespace {classNamespace};
 
+using {configClassPath.ClassNamespace};
 using {contextClassPath.ClassNamespace};
 using {testUtilsClassPath.ClassNamespace};
 using {apiClassPath.ClassNamespace};
 using {utilsClassPath.ClassNamespace};
 using {servicesClassPath.ClassNamespace};
 using MediatR;
+using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
@@ -64,6 +71,7 @@ using Microsoft.Extensions.DependencyInjection;
 using Moq;{usingStatement}
 using NUnit.Framework;
 using Respawn;
+using Respawn.Graph;
 using System.IO;
 using System.Security.Claims;
 using System.Threading.Tasks;
@@ -71,8 +79,6 @@ using System.Threading.Tasks;
 [SetUpFixture]
 public class TestFixture
 {{
-    private static IConfigurationRoot _configuration;
-    private static IWebHostEnvironment _env;
     private static IServiceScopeFactory _scopeFactory;
     private static Checkpoint _checkpoint;
     private static ServiceProvider _provider;
@@ -83,22 +89,15 @@ public class TestFixture
         var dockerDbPort = await DockerDatabaseUtilities.EnsureDockerStartedAndGetPortPortAsync();
         var dockerConnectionString = DockerDatabaseUtilities.GetSqlConnectionString(dockerDbPort.ToString());
         Environment.SetEnvironmentVariable(""DB_CONNECTION_STRING"", dockerConnectionString);
+        
+        var builder = WebApplication.CreateBuilder(new WebApplicationOptions()
+        {{
+            EnvironmentName = LocalConfig.IntegrationTestingEnvName,
+        }});
+        builder.Configuration.AddEnvironmentVariables();
 
-        var builder = new ConfigurationBuilder()
-            .SetBasePath(Directory.GetCurrentDirectory())
-            .AddInMemoryCollection(new Dictionary<string, string> {{ }})
-            .AddEnvironmentVariables();
-
-        _configuration = builder.Build();
-        _env = Mock.Of<IWebHostEnvironment>(e => e.EnvironmentName == LocalConfig.IntegrationTestingEnvName);
-
-        var startup = new Startup(_configuration, _env);
-
-        var services = new ServiceCollection();
-
-        services.AddLogging();
-
-        startup.ConfigureServices(services);
+        builder.ConfigureServices();
+        var services = builder.Services;
 
         // add any mock services here
         var httpContextAccessorService = services.FirstOrDefault(d =>
@@ -115,16 +114,17 @@ public class TestFixture
 
         {checkpoint}
 
-        EnsureDatabase();
+        await EnsureDatabase();
     }}
 
-    private static void EnsureDatabase()
+    private static async Task EnsureDatabase()
     {{
         using var scope = _scopeFactory.CreateScope();
 
         var context = scope.ServiceProvider.GetService<{dbContextName}>();
 
-        context.Database.Migrate();
+        await context?.Database?.MigrateAsync();
+        await ResetState();
     }}
 
     public static TScopedService GetService<TScopedService>()
@@ -162,6 +162,43 @@ public class TestFixture
             claims.Add(new Claim(ClaimTypes.Role, role));
         }}
         claims.Add(new Claim(ClaimTypes.Name, sub));
+
+        var identity = new ClaimsIdentity(claims);
+        var claimsPrincipal = new ClaimsPrincipal(identity);
+
+        var httpContext = Mock.Of<HttpContext>(c => c.User == claimsPrincipal);
+
+        var httpContextAccessor = GetService<IHttpContextAccessor>();
+        httpContextAccessor.HttpContext = httpContext;
+    }}
+    
+    public static void SetMachineRole(string role, string clientId = null)
+    {{
+        clientId ??= Guid.NewGuid().ToString();
+        var claims = new List<Claim>
+        {{
+            new Claim(""client_role"", role),
+            new Claim(""client_id"", clientId)
+        }};
+
+        var identity = new ClaimsIdentity(claims);
+        var claimsPrincipal = new ClaimsPrincipal(identity);
+
+        var httpContext = Mock.Of<HttpContext>(c => c.User == claimsPrincipal);
+
+        var httpContextAccessor = GetService<IHttpContextAccessor>();
+        httpContextAccessor.HttpContext = httpContext;
+    }}
+
+    public static void SetMachineRoles(string[] roles, string clientId = null)
+    {{
+        clientId ??= Guid.NewGuid().ToString();
+        var claims = new List<Claim>();
+        foreach (var role in roles)
+        {{
+            claims.Add(new Claim(""client_role"", role));
+        }}
+        claims.Add(new Claim(""client_id"", clientId));
 
         var identity = new ClaimsIdentity(claims);
         var claimsPrincipal = new ClaimsPrincipal(identity);
@@ -288,6 +325,5 @@ public class TestFixture
         // MassTransit Teardown -- Do Not Delete Comment
     }}
 }}";
-        }
     }
 }

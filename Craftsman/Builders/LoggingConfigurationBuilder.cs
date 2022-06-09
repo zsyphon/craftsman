@@ -1,57 +1,64 @@
-namespace Craftsman.Builders
-{
-    using System.IO.Abstractions;
-    using Helpers;
+namespace Craftsman.Builders;
 
-    public class LoggingConfigurationBuilder
+using Helpers;
+using Services;
+
+public class LoggingConfigurationBuilder
+{
+    private readonly ICraftsmanUtilities _utilities;
+
+    public LoggingConfigurationBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateConfigFile(string projectDirectory, string authServerProjectName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.WebApiHostExtensionsClassPath(projectDirectory, "LoggingConfiguration.cs", authServerProjectName);
-            var fileText = GetConfigText(classPath.ClassNamespace);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
-        
-        private static string GetConfigText(string classNamespace)
-        {
-            return @$"namespace {classNamespace};
+        _utilities = utilities;
+    }
+
+    public void CreateWebApiConfigFile(string projectDirectory, string authServerProjectName)
+    {
+        var classPath = ClassPathHelper.WebApiHostExtensionsClassPath(projectDirectory, "LoggingConfiguration.cs", authServerProjectName);
+        var fileText = GetConfigTextForHostBuilder(classPath.ClassNamespace);
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    public void CreateBffConfigFile(string solutionDirectory, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.BffHostExtensionsClassPath(solutionDirectory, "LoggingConfiguration.cs", projectBaseName);
+        var fileText = GetConfigTextForHostBuilder(classPath.ClassNamespace);
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    private static string GetConfigTextForHostBuilder(string classNamespace)
+    {
+        return @$"namespace {classNamespace};
 
 using Serilog;
+using Serilog.Core;
 using Serilog.Events;
 using Serilog.Exceptions;
 
 public static class LoggingConfiguration
 {{
-    public static void AddLoggingConfiguration(this IHost host)
+    public static void AddLoggingConfiguration(this IHostBuilder host, IWebHostEnvironment env)
     {{
-        using var scope = host.Services.CreateScope();
-        var services = scope.ServiceProvider;
-        var env = services.GetService<IWebHostEnvironment>();
+        var loggingLevelSwitch = new LoggingLevelSwitch();
+        if (env.IsDevelopment())
+            loggingLevelSwitch.MinimumLevel = LogEventLevel.Warning;
+        if (env.IsProduction())
+            loggingLevelSwitch.MinimumLevel = LogEventLevel.Information;
         
         var logger = new LoggerConfiguration()
-            .MinimumLevel.Information()
-            .MinimumLevel.Override(""Microsoft"", LogEventLevel.Warning)
-            .MinimumLevel.Override(""System"", LogEventLevel.Warning)
+            .MinimumLevel.ControlledBy(loggingLevelSwitch)
             .MinimumLevel.Override(""Microsoft.Hosting.Lifetime"", LogEventLevel.Information)
             .MinimumLevel.Override(""Microsoft.AspNetCore.Authentication"", LogEventLevel.Information)
             .Enrich.FromLogContext()
-            .Enrich.WithProperty(""EnvironmentName"", env.EnvironmentName)
+            .Enrich.WithEnvironment(env.EnvironmentName)
             .Enrich.WithProperty(""ApplicationName"", env.ApplicationName)
             .Enrich.WithExceptionDetails()
-            .Enrich.WithProcessId()
-            .Enrich.WithThreadId()
-            .Enrich.WithMachineName()
             .WriteTo.Console();
 
-        if (env.IsProduction())
-            logger.MinimumLevel.Error();
-        
-        if (env.IsDevelopment())
-            logger.MinimumLevel.Debug();
-
         Log.Logger = logger.CreateLogger();
+        
+        host.UseSerilog();
     }}
 }}";
-        }
     }
 }

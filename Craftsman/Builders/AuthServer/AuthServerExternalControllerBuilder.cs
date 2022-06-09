@@ -1,28 +1,31 @@
-﻿namespace Craftsman.Builders.AuthServer
+﻿namespace Craftsman.Builders.AuthServer;
+
+using Helpers;
+using Services;
+using static Helpers.ConstMessages;
+
+public class AuthServerExternalControllerBuilder
 {
-    using System;
-    using System.IO.Abstractions;
-    using System.Linq;
-    using Enums;
-    using Helpers;
-    using Models;
-    using static Helpers.ConstMessages;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class AuthServerExternalControllerBuilder
+    public AuthServerExternalControllerBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateExternalController(string projectDirectory, string authServerProjectName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.AuthServerControllersClassPath(projectDirectory, "ExternalController.cs", authServerProjectName);
-            var fileText = GetControllerText(classPath.ClassNamespace, projectDirectory, authServerProjectName);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
-        
-        public static string GetControllerText(string classNamespace, string projectDirectory, string authServerProjectName)
-        {
-            var extClassPath = ClassPathHelper.AuthServerExtensionsClassPath(projectDirectory, "", authServerProjectName);
-            var attrClassPath = ClassPathHelper.AuthServerAttributesClassPath(projectDirectory, "", authServerProjectName);
+        _utilities = utilities;
+    }
 
-            return @$"{DuendeDisclosure}// Copyright (c) Duende Software. All rights reserved.
+    public void CreateExternalController(string projectDirectory, string authServerProjectName)
+    {
+        var classPath = ClassPathHelper.AuthServerControllersClassPath(projectDirectory, "ExternalController.cs", authServerProjectName);
+        var fileText = GetControllerText(classPath.ClassNamespace, projectDirectory, authServerProjectName);
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    public static string GetControllerText(string classNamespace, string projectDirectory, string authServerProjectName)
+    {
+        var extClassPath = ClassPathHelper.AuthServerExtensionsClassPath(projectDirectory, "", authServerProjectName);
+        var attrClassPath = ClassPathHelper.AuthServerAttributesClassPath(projectDirectory, "", authServerProjectName);
+
+        return @$"{DuendeDisclosure}// Copyright (c) Duende Software. All rights reserved.
 // See LICENSE in the project root for license information.
 
 
@@ -217,6 +220,5 @@ public class ExternalController : Controller
         }}
     }}
 }}";
-        }
     }
 }

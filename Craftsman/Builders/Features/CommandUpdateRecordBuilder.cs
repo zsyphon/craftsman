@@ -1,71 +1,65 @@
-﻿namespace Craftsman.Builders.Features
+﻿namespace Craftsman.Builders.Features;
+
+using Domain;
+using Domain.Enums;
+using Helpers;
+using Services;
+
+public class CommandUpdateRecordBuilder
 {
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class CommandUpdateRecordBuilder
+    public CommandUpdateRecordBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateCommand(string solutionDirectory, string srcDirectory, Entity entity, string contextName, string projectBaseName)
-        {
-            var classPath = ClassPathHelper.FeaturesClassPath(srcDirectory, $"{Utilities.UpdateEntityFeatureClassName(entity.Name)}.cs", entity.Plural, projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateCommand(string solutionDirectory, string srcDirectory, Entity entity, string contextName, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.FeaturesClassPath(srcDirectory, $"{FileNames.UpdateEntityFeatureClassName(entity.Name)}.cs", entity.Plural, projectBaseName);
+        var fileText = GetCommandFileText(classPath.ClassNamespace, entity, contextName, solutionDirectory, srcDirectory, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
+    public static string GetCommandFileText(string classNamespace, Entity entity, string contextName, string solutionDirectory, string srcDirectory, string projectBaseName)
+    {
+        var className = FileNames.UpdateEntityFeatureClassName(entity.Name);
+        var updateCommandName = FileNames.CommandUpdateName(entity.Name);
+        var updateDto = FileNames.GetDtoName(entity.Name, Dto.Update);
 
-            using (FileStream fs = File.Create(classPath.FullClassPath))
-            {
-                var data = "";
-                data = GetCommandFileText(classPath.ClassNamespace, entity, contextName, solutionDirectory, srcDirectory, projectBaseName);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
+        var primaryKeyPropType = Entity.PrimaryKeyProperty.Type;
+        var primaryKeyPropName = Entity.PrimaryKeyProperty.Name;
+        var entityNameLowercase = entity.Name.LowercaseFirstLetter();
+        var commandProp = $"{entity.Name}ToUpdate";
+        var newEntityDataProp = $"new{entity.Name}Data";
+        var updatedEntityProp = $"{entityNameLowercase}ToUpdate";
+        var repoInterface = FileNames.EntityRepositoryInterface(entity.Name);
+        var repoInterfaceProp = $"{entity.Name.LowercaseFirstLetter()}Repository";
 
-        public static string GetCommandFileText(string classNamespace, Entity entity, string contextName, string solutionDirectory, string srcDirectory, string projectBaseName)
-        {
-            var className = Utilities.UpdateEntityFeatureClassName(entity.Name);
-            var updateCommandName = Utilities.CommandUpdateName(entity.Name);
-            var updateDto = Utilities.GetDtoName(entity.Name, Dto.Update);
+        var entityClassPath = ClassPathHelper.EntityClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var dtoClassPath = ClassPathHelper.DtoClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var exceptionsClassPath = ClassPathHelper.ExceptionsClassPath(srcDirectory, "");
+        var validatorsClassPath = ClassPathHelper.ValidationClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var entityServicesClassPath = ClassPathHelper.EntityServicesClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var servicesClassPath = ClassPathHelper.WebApiServicesClassPath(srcDirectory, "", projectBaseName);
 
-            var primaryKeyPropType = Entity.PrimaryKeyProperty.Type;
-            var primaryKeyPropName = Entity.PrimaryKeyProperty.Name;
-            var entityNameLowercase = entity.Name.LowercaseFirstLetter();
-            var commandProp = $"{entity.Name}ToUpdate";
-            var newEntityDataProp = $"new{entity.Name}Data";
-            var updatedEntityProp = $"{entityNameLowercase}ToUpdate";
-
-            var entityClassPath = ClassPathHelper.EntityClassPath(srcDirectory, "", entity.Plural, projectBaseName);
-            var dtoClassPath = ClassPathHelper.DtoClassPath(solutionDirectory, "", entity.Name, projectBaseName);
-            var exceptionsClassPath = ClassPathHelper.ExceptionsClassPath(srcDirectory, "");
-            var contextClassPath = ClassPathHelper.DbContextClassPath(srcDirectory, "", projectBaseName);
-            var validatorsClassPath = ClassPathHelper.ValidationClassPath(srcDirectory, "", entity.Plural, projectBaseName);
-
-            return @$"namespace {classNamespace};
+        return @$"namespace {classNamespace};
 
 using {entityClassPath.ClassNamespace};
 using {dtoClassPath.ClassNamespace};
 using {exceptionsClassPath.ClassNamespace};
-using {contextClassPath.ClassNamespace};
 using {validatorsClassPath.ClassNamespace};
+using {entityServicesClassPath.ClassNamespace};
+using {servicesClassPath.ClassNamespace};
 using AutoMapper;
-using AutoMapper.QueryableExtensions;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
-using System.Threading;
-using System.Threading.Tasks;
 
 public static class {className}
 {{
     public class {updateCommandName} : IRequest<bool>
     {{
-        public {primaryKeyPropType} {primaryKeyPropName} {{ get; set; }}
-        public {updateDto} {commandProp} {{ get; set; }}
+        public readonly {primaryKeyPropType} {primaryKeyPropName};
+        public readonly {updateDto} {commandProp};
 
         public {updateCommandName}({primaryKeyPropType} {entityNameLowercase}, {updateDto} {newEntityDataProp})
         {{
@@ -76,30 +70,27 @@ public static class {className}
 
     public class Handler : IRequestHandler<{updateCommandName}, bool>
     {{
-        private readonly {contextName} _db;
+        private readonly {repoInterface} _{repoInterfaceProp};
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
 
-        public Handler({contextName} db, IMapper mapper)
+        public Handler({repoInterface} {repoInterfaceProp}, IUnitOfWork unitOfWork, IMapper mapper)
         {{
             _mapper = mapper;
-            _db = db;
+            _{repoInterfaceProp} = {repoInterfaceProp};
+            _unitOfWork = unitOfWork;
         }}
 
         public async Task<bool> Handle({updateCommandName} request, CancellationToken cancellationToken)
         {{
-            var {updatedEntityProp} = await _db.{entity.Plural}
-                .FirstOrDefaultAsync({entity.Lambda} => {entity.Lambda}.{primaryKeyPropName} == request.{primaryKeyPropName}, cancellationToken);
-
-            if ({updatedEntityProp} == null)
-                throw new NotFoundException(""{entity.Name}"", request.{primaryKeyPropName});
+            var {updatedEntityProp} = await _{repoInterfaceProp}.GetById(request.Id, cancellationToken: cancellationToken);
 
             {updatedEntityProp}.Update(request.{commandProp});
-            await _db.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitChanges(cancellationToken);
 
             return true;
         }}
     }}
 }}";
-        }
     }
 }

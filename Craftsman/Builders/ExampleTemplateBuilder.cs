@@ -1,36 +1,37 @@
-﻿namespace Craftsman.Builders
+﻿namespace Craftsman.Builders;
+
+using Domain;
+using Helpers;
+using RestSharp.Serialization.Json;
+using Services;
+
+public class ExampleTemplateBuilder
 {
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.IO.Abstractions;
-    using YamlDotNet.Serialization;
-    using System.Text;
-    using RestSharp.Serialization.Json;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class ExampleTemplateBuilder
+    public ExampleTemplateBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateFile(string solutionDirectory, DomainProject domainProject, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.ExampleYamlRootClassPath(solutionDirectory, "exampleTemplate.json");
-            var fileText = GetTemplateText(domainProject);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
-        
-        public static void CreateYamlFile(string solutionDirectory, string domainProject, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.ExampleYamlRootClassPath(solutionDirectory, "exampleTemplate.yaml");
-            Utilities.CreateFile(classPath, domainProject, fileSystem);
-        }
+        _utilities = utilities;
+    }
 
-        public static string GetTemplateText(DomainProject domainProject)
-        {
-            var serializer = new JsonSerializer();
-            var templateFromDomain = serializer.Serialize(domainProject);
+    public void CreateFile(string solutionDirectory, DomainProject domainProject)
+    {
+        var classPath = ClassPathHelper.ExampleYamlRootClassPath(solutionDirectory, "exampleTemplate.json");
+        var fileText = GetTemplateText(domainProject);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            return templateFromDomain;
-        }
+    public void CreateYamlFile(string solutionDirectory, string domainProject)
+    {
+        var classPath = ClassPathHelper.ExampleYamlRootClassPath(solutionDirectory, "exampleTemplate.yaml");
+        _utilities.CreateFile(classPath, domainProject);
+    }
+
+    public static string GetTemplateText(DomainProject domainProject)
+    {
+        var serializer = new JsonSerializer();
+        var templateFromDomain = serializer.Serialize(domainProject);
+
+        return templateFromDomain;
     }
 }

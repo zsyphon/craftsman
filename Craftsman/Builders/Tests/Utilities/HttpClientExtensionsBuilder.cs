@@ -1,35 +1,30 @@
-﻿namespace Craftsman.Builders.Tests.Utilities
+﻿namespace Craftsman.Builders.Tests.Utilities;
+
+using Helpers;
+using Services;
+
+public class HttpClientExtensionsBuilder
 {
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class HttpClientExtensionsBuilder
+    public HttpClientExtensionsBuilder(ICraftsmanUtilities utilities)
     {
-        public static void Create(string solutionDirectory, string projectName)
-        {
-            var classPath = ClassPathHelper.FunctionalTestUtilitiesClassPath(solutionDirectory, projectName, $"HttpClientExtensions.cs");
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void Create(string solutionDirectory, string projectName)
+    {
+        var classPath = ClassPathHelper.FunctionalTestUtilitiesClassPath(solutionDirectory, projectName, $"HttpClientExtensions.cs");
+        var fileText = CreateHttpClientExtensionsText(classPath);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                File.Delete(classPath.FullClassPath); // saves me from having to make a remover!
-
-            using (FileStream fs = File.Create(classPath.FullClassPath))
-            {
-                var data = CreateHttpClientExtensionsText(classPath);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
-
-        private static string CreateHttpClientExtensionsText(ClassPath classPath)
-        {
-            return @$"namespace {classPath.ClassNamespace};
+    private static string CreateHttpClientExtensionsText(ClassPath classPath)
+    {
+        return @$"namespace {classPath.ClassNamespace};
 
 using Microsoft.AspNetCore.JsonPatch;
-using System.Text.Json;
+using Newtonsoft.Json;
 using System.Dynamic;
 using System.Net;
 using System.Net.Http.Json;
@@ -71,7 +66,7 @@ public static class HttpClientExtensions
     public static async Task<HttpResponseMessage> PatchJsonRequestAsync<TModel>(this HttpClient client, string url, JsonPatchDocument<TModel> patchDoc)
         where TModel : class
     {{
-        var serializedRecipeToUpdate = JsonSerializer.Serialize(patchDoc);
+        var serializedRecipeToUpdate = JsonConvert.SerializeObject(patchDoc);
 
         var patchRequest = new HttpRequestMessage(new HttpMethod(""PATCH""), url)
         {{
@@ -81,6 +76,5 @@ public static class HttpClientExtensions
         return await client.SendAsync(patchRequest).ConfigureAwait(false);
     }}
 }}";
-        }
     }
 }

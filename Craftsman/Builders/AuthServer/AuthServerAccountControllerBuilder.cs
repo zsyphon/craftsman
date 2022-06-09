@@ -1,30 +1,33 @@
-﻿namespace Craftsman.Builders.AuthServer
-{
-    using System;
-    using System.IO.Abstractions;
-    using System.Linq;
-    using Enums;
-    using Helpers;
-    using Models;
-    using static Helpers.ConstMessages;
+﻿namespace Craftsman.Builders.AuthServer;
 
-    public class AuthServerAccountControllerBuilder
+using Helpers;
+using Services;
+using static Helpers.ConstMessages;
+
+public class AuthServerAccountControllerBuilder
+{
+    private readonly ICraftsmanUtilities _utilities;
+
+    public AuthServerAccountControllerBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateAccountController(string projectDirectory, string authServerProjectName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.AuthServerControllersClassPath(projectDirectory, "AccountsController.cs", authServerProjectName);
-            var fileText = GetControllerText(classPath.ClassNamespace, projectDirectory, authServerProjectName);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
-        
-        public static string GetControllerText(string classNamespace, string projectDirectory, string authServerProjectName)
-        {
-            var modelsClassPath = ClassPathHelper.AuthServerModelsClassPath(projectDirectory, "", authServerProjectName);
-            var viewModelsClassPath = ClassPathHelper.AuthServerViewModelsClassPath(projectDirectory, "", authServerProjectName);
-            var extClassPath = ClassPathHelper.AuthServerExtensionsClassPath(projectDirectory, "Extensions.cs", authServerProjectName);
-            var attrClassPath = ClassPathHelper.AuthServerAttributesClassPath(projectDirectory, "", authServerProjectName);
-            
-            return @$"{DuendeDisclosure}// Copyright (c) Duende Software. All rights reserved.
+        _utilities = utilities;
+    }
+
+    public void CreateAccountController(string projectDirectory, string authServerProjectName)
+    {
+        var classPath = ClassPathHelper.AuthServerControllersClassPath(projectDirectory, "AccountsController.cs", authServerProjectName);
+        var fileText = GetControllerText(classPath.ClassNamespace, projectDirectory, authServerProjectName);
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    public static string GetControllerText(string classNamespace, string projectDirectory, string authServerProjectName)
+    {
+        var modelsClassPath = ClassPathHelper.AuthServerModelsClassPath(projectDirectory, "", authServerProjectName);
+        var viewModelsClassPath = ClassPathHelper.AuthServerViewModelsClassPath(projectDirectory, "", authServerProjectName);
+        var extClassPath = ClassPathHelper.AuthServerExtensionsClassPath(projectDirectory, "Extensions.cs", authServerProjectName);
+        var attrClassPath = ClassPathHelper.AuthServerAttributesClassPath(projectDirectory, "", authServerProjectName);
+
+        return @$"{DuendeDisclosure}// Copyright (c) Duende Software. All rights reserved.
 // See LICENSE in the project root for license information.
 
 
@@ -407,6 +410,5 @@ public class AccountController : Controller
         return vm;
     }}
 }}";
-        }
     }
 }

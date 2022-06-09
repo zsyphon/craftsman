@@ -1,33 +1,27 @@
-﻿namespace Craftsman.Builders.Dtos
+﻿namespace Craftsman.Builders.Dtos;
+
+using Helpers;
+using Services;
+
+public class BasePaginationParametersBuilder
 {
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using System.IO.Abstractions;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class BasePaginationParametersBuilder
+    public BasePaginationParametersBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateBasePaginationParameters(string solutionDirectory, string projectBaseName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.SharedDtoClassPath(solutionDirectory, $"BasePaginationParameters.cs");
+        _utilities = utilities;
+    }
 
-            if (!fileSystem.Directory.Exists(classPath.ClassDirectory))
-                fileSystem.Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateBasePaginationParameters(string solutionDirectory)
+    {
+        var classPath = ClassPathHelper.SharedDtoClassPath(solutionDirectory, $"BasePaginationParameters.cs");
+        var fileText = GetBasePaginationParametersText(classPath.ClassNamespace);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (fileSystem.File.Exists(classPath.FullClassPath))
-                return; // ***change from normal!**** if it exists, don't do anything instead of throwing an error
-
-            using (var fs = fileSystem.File.Create(classPath.FullClassPath))
-            {
-                var data = "";
-                data = GetBasePaginationParametersText(classPath.ClassNamespace);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
-
-        public static string GetBasePaginationParametersText(string classNamespace)
-        {
-            return @$"namespace {classNamespace}
+    public static string GetBasePaginationParametersText(string classNamespace)
+    {
+        return @$"namespace {classNamespace}
 {{
     public abstract class BasePaginationParameters
     {{
@@ -49,6 +43,5 @@
         }}
     }}
 }}";
-        }
     }
 }

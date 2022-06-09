@@ -1,35 +1,28 @@
-﻿namespace Craftsman.Builders.Projects
+﻿namespace Craftsman.Builders.Projects;
+
+using Helpers;
+using Services;
+
+public class SharedTestsCsProjBuilder
 {
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class SharedTestsCsProjBuilder
+    public SharedTestsCsProjBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateTestsCsProj(string solutionDirectory, string projectBaseName)
-        {
-            var classPath = ClassPathHelper.SharedTestProjectClassPath(solutionDirectory, projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateTestsCsProj(string solutionDirectory, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.SharedTestProjectClassPath(solutionDirectory, projectBaseName);
+        _utilities.CreateFile(classPath, GetTestsCsProjFileText(solutionDirectory, projectBaseName));
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
+    public static string GetTestsCsProjFileText(string solutionDirectory, string projectBaseName)
+    {
+        var apiClassPath = ClassPathHelper.WebApiProjectClassPath(solutionDirectory, projectBaseName);
 
-            using (FileStream fs = File.Create(classPath.FullClassPath))
-            {
-                var data = "";
-                data = GetInfrastructurePersistenceCsProjFileText(solutionDirectory, projectBaseName);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
-
-        public static string GetInfrastructurePersistenceCsProjFileText(string solutionDirectory, string projectBaseName)
-        {
-            var apiClassPath = ClassPathHelper.WebApiProjectClassPath(solutionDirectory, projectBaseName);
-
-            return @$"<Project Sdk=""Microsoft.NET.Sdk"">
+        return @$"<Project Sdk=""Microsoft.NET.Sdk"">
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -37,8 +30,9 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include=""Ardalis.SmartEnum"" Version=""2.1.0"" />
     <PackageReference Include=""AutoBogus"" Version=""2.13.1"" />
-    <PackageReference Include=""Bogus"" Version=""34.0.1"" />
+    <PackageReference Include=""Bogus"" Version=""34.0.2"" />
   </ItemGroup>
 
   <ItemGroup>
@@ -46,6 +40,5 @@
   </ItemGroup>
 
 </Project>";
-        }
     }
 }

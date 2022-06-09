@@ -1,44 +1,76 @@
-﻿namespace Craftsman.Builders
-{
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using System.IO;
-    using System.IO.Abstractions;
-    using System.Text;
+﻿namespace Craftsman.Builders;
 
-    public class CoreExceptionsBuilder
+using System.IO.Abstractions;
+using Helpers;
+using MediatR;
+using Services;
+
+public static class CoreExceptionBuilder
+{
+    public class CoreExceptionBuilderCommand : IRequest<bool>
     {
-        public static void CreateExceptions(string solutionDirectory, string projectBaseName, IFileSystem fileSystem)
+    }
+
+    public class Handler : IRequestHandler<CoreExceptionBuilderCommand, bool>
+    {
+        private readonly ICraftsmanUtilities _utilities;
+        private readonly IFileSystem _fileSystem;
+        private readonly IScaffoldingDirectoryStore _scaffoldingDirectoryStore;
+
+        public Handler(ICraftsmanUtilities utilities,
+            IFileSystem fileSystem,
+            IScaffoldingDirectoryStore scaffoldingDirectoryStore)
+        {
+            _utilities = utilities;
+            _fileSystem = fileSystem;
+            _scaffoldingDirectoryStore = scaffoldingDirectoryStore;
+        }
+
+        public Task<bool> Handle(CoreExceptionBuilderCommand request, CancellationToken cancellationToken)
+        {
+            CreateExceptions(_scaffoldingDirectoryStore.SolutionDirectory);
+            return Task.FromResult(true);
+        }
+
+        public void CreateExceptions(string solutionDirectory)
         {
             var classPath = ClassPathHelper.ExceptionsClassPath(solutionDirectory, "");
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+            if (!_fileSystem.Directory.Exists(classPath.ClassDirectory))
+                _fileSystem.Directory.CreateDirectory(classPath.ClassDirectory);
 
-            CreateNotFoundException(solutionDirectory, projectBaseName, fileSystem);
-            CreateValidationException(solutionDirectory, projectBaseName, fileSystem);
-            CreateForbiddenException(solutionDirectory, projectBaseName, fileSystem);
+            CreateNotFoundException(solutionDirectory);
+            CreateValidationException(solutionDirectory);
+            CreateForbiddenException(solutionDirectory);
+            CreateInvalidSmartEnumPropertyNameException(solutionDirectory);
         }
 
-        public static void CreateValidationException(string solutionDirectory, string projectBaseName, IFileSystem fileSystem)
+        public void CreateValidationException(string solutionDirectory)
         {
             var classPath = ClassPathHelper.ExceptionsClassPath(solutionDirectory, $"ValidationException.cs");
             var fileText = GetValidationExceptionFileText(classPath.ClassNamespace);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
+            _utilities.CreateFile(classPath, fileText);
         }
 
-        public static void CreateNotFoundException(string solutionDirectory, string projectBaseName, IFileSystem fileSystem)
+        public void CreateNotFoundException(string solutionDirectory)
         {
             var classPath = ClassPathHelper.ExceptionsClassPath(solutionDirectory, $"NotFoundException.cs");
             var fileText = GetNotFoundExceptionFileText(classPath.ClassNamespace);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
+            _utilities.CreateFile(classPath, fileText);
         }
 
-        public static void CreateForbiddenException(string solutionDirectory, string projectBaseName, IFileSystem fileSystem)
+        public void CreateForbiddenException(string solutionDirectory)
         {
             var classPath = ClassPathHelper.ExceptionsClassPath(solutionDirectory, $"ForbiddenException.cs");
             var fileText = GetForbiddenExceptionFileText(classPath.ClassNamespace);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
+            _utilities.CreateFile(classPath, fileText);
+        }
+
+        public void CreateInvalidSmartEnumPropertyNameException(string solutionDirectory)
+        {
+            var classPath = ClassPathHelper.ExceptionsClassPath(solutionDirectory, $"InvalidSmartEnumPropertyNameException.cs");
+            var fileText = GetInvalidSmartEnumPropertyNameExceptionFileText(classPath.ClassNamespace);
+            _utilities.CreateFile(classPath, fileText);
         }
 
         public static string GetNotFoundExceptionFileText(string classNamespace)
@@ -68,6 +100,23 @@
             : base($""Entity \""{{name}}\"" ({{key}}) was not found."")
         {{
         }}
+    }}
+}}";
+        }
+
+        public static string GetInvalidSmartEnumPropertyNameExceptionFileText(string classNamespace)
+        {
+            return @$"namespace {classNamespace}
+{{
+    using System;
+    using System.Globalization;
+
+    [Serializable]
+    public class InvalidSmartEnumPropertyName : Exception
+    {{
+        public InvalidSmartEnumPropertyName(string property, string enumVal)
+            : base($""The value `{{enumVal}}` is not valid for property `{{property}}`."")
+        {{ }}
     }}
 }}";
         }

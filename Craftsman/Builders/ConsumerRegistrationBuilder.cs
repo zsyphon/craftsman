@@ -1,58 +1,55 @@
-﻿namespace Craftsman.Builders
+﻿namespace Craftsman.Builders;
+
+using Domain;
+using Domain.Enums;
+using Helpers;
+using Services;
+
+public class ConsumerRegistrationBuilder
 {
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class ConsumerRegistrationBuilder
+    public ConsumerRegistrationBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateConsumerRegistration(string solutionDirectory, Consumer consumer, string projectBaseName)
-        {
-            var className = $@"{consumer.EndpointRegistrationMethodName}Registration";
-            var classPath = ClassPathHelper.WebApiConsumersServiceExtensionsClassPath(solutionDirectory, $"{className}.cs", projectBaseName);
-            var consumerFeatureClassPath = ClassPathHelper.ConsumerFeaturesClassPath(solutionDirectory, $"{consumer.ConsumerName}.cs", consumer.DomainDirectory, projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateConsumerRegistration(string solutionDirectory, Consumer consumer, string projectBaseName)
+    {
+        var className = $@"{consumer.EndpointRegistrationMethodName}Registration";
+        var classPath = ClassPathHelper.WebApiConsumersServiceExtensionsClassPath(solutionDirectory, $"{className}.cs", projectBaseName);
+        var consumerFeatureClassPath = ClassPathHelper.ConsumerFeaturesClassPath(solutionDirectory, $"{consumer.ConsumerName}.cs", consumer.DomainDirectory, projectBaseName);
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
-
-            var quorumText = consumer.IsQuorum ? $@"
+        var quorumText = consumer.IsQuorum ? $@"
 
             // a replicated queue to provide high availability and data safety. available in RMQ 3.8+
             re.SetQuorumQueue();" : "";
 
-            var lazyText = consumer.IsLazy ? $@"
+        var lazyText = consumer.IsLazy ? $@"
 
             // enables a lazy queue for more stable cluster with better predictive performance.
             // Please note that you should disable lazy queues if you require really high performance, if the queues are always short, or if you have set a max-length policy.
             re.SetQueueArgument(""declare"", ""lazy"");" : "";
-            //re.Lazy = true;" : "";
+        //re.Lazy = true;" : "";
 
-            using FileStream fs = File.Create(classPath.FullClassPath);
-            var data = "";
+        var data = "";
 
-            if (ExchangeTypeEnum.FromName(consumer.ExchangeType) == ExchangeTypeEnum.Direct
-                || ExchangeTypeEnum.FromName(consumer.ExchangeType) == ExchangeTypeEnum.Topic)
-                data = GetDirectOrTopicConsumerRegistration(classPath.ClassNamespace, className, consumer, lazyText, quorumText, consumerFeatureClassPath.ClassNamespace);
-            else
-                data = GetFanoutConsumerRegistration(classPath.ClassNamespace, className, consumer, lazyText, quorumText, consumerFeatureClassPath.ClassNamespace);
+        if (ExchangeTypeEnum.FromName(consumer.ExchangeType) == ExchangeTypeEnum.Direct
+            || ExchangeTypeEnum.FromName(consumer.ExchangeType) == ExchangeTypeEnum.Topic)
+            data = GetDirectOrTopicConsumerRegistration(classPath.ClassNamespace, className, consumer, lazyText, quorumText, consumerFeatureClassPath.ClassNamespace);
+        else
+            data = GetFanoutConsumerRegistration(classPath.ClassNamespace, className, consumer, lazyText, quorumText, consumerFeatureClassPath.ClassNamespace);
 
-            fs.Write(Encoding.UTF8.GetBytes(data));
-        }
+        _utilities.CreateFile(classPath, data);
+    }
 
-        public static string GetDirectOrTopicConsumerRegistration(string classNamespace, string className, Consumer consumer, string lazyText, string quorumText, string consumerFeatureUsing)
-        {
-            var exchangeType = ExchangeTypeEnum.FromName(consumer.ExchangeType) == ExchangeTypeEnum.Direct 
-                ? "ExchangeType.Direct" 
-                : "ExchangeType.Topic";
+    public static string GetDirectOrTopicConsumerRegistration(string classNamespace, string className, Consumer consumer, string lazyText, string quorumText, string consumerFeatureUsing)
+    {
+        var exchangeType = ExchangeTypeEnum.FromName(consumer.ExchangeType) == ExchangeTypeEnum.Direct
+            ? "ExchangeType.Direct"
+            : "ExchangeType.Topic";
 
-            return @$"namespace {classNamespace};
+        return @$"namespace {classNamespace};
 
 using MassTransit;
 using MassTransit.RabbitMqTransport;
@@ -80,11 +77,11 @@ public static class {className}
         }});
     }}
 }}";
-        }
+    }
 
-        public static string GetFanoutConsumerRegistration(string classNamespace, string className, Consumer consumer, string lazyText, string quorumText, string consumerFeatureUsing)
-        {
-            return @$"namespace {classNamespace};
+    public static string GetFanoutConsumerRegistration(string classNamespace, string className, Consumer consumer, string lazyText, string quorumText, string consumerFeatureUsing)
+    {
+        return @$"namespace {classNamespace};
 
 using MassTransit;
 using MassTransit.RabbitMqTransport;
@@ -111,6 +108,5 @@ public static class {className}
         }});
     }}
 }}";
-        }
     }
 }

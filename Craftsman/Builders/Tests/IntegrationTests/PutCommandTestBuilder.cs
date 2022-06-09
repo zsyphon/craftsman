@@ -1,66 +1,61 @@
-﻿namespace Craftsman.Builders.Tests.IntegrationTests
+﻿namespace Craftsman.Builders.Tests.IntegrationTests;
+
+using Craftsman.Services;
+using Domain;
+using Domain.Enums;
+using Helpers;
+using Services;
+
+public class PutCommandTestBuilder
 {
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.Linq;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class PutCommandTestBuilder
+    public PutCommandTestBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateTests(string solutionDirectory, string testDirectory, string srcDirectory, Entity entity, string projectBaseName)
-        {
-            var classPath = ClassPathHelper.FeatureTestClassPath(testDirectory, $"Update{entity.Name}CommandTests.cs", entity.Name, projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateTests(string solutionDirectory, string testDirectory, string srcDirectory, Entity entity, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.FeatureTestClassPath(testDirectory, $"Update{entity.Name}CommandTests.cs", entity.Plural, projectBaseName);
+        var fileText = WriteTestFileText(solutionDirectory, testDirectory, srcDirectory, classPath, entity, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
+    private static string WriteTestFileText(string solutionDirectory, string testDirectory, string srcDirectory, ClassPath classPath, Entity entity, string projectBaseName)
+    {
+        var featureName = FileNames.UpdateEntityFeatureClassName(entity.Name);
+        var testFixtureName = FileNames.GetIntegrationTestFixtureName();
+        var commandName = FileNames.CommandUpdateName(entity.Name);
+        var fakeEntity = FileNames.FakerName(entity.Name);
+        var fakeUpdateDto = FileNames.FakerName(FileNames.GetDtoName(entity.Name, Dto.Update));
+        var fakeCreationDto = FileNames.FakerName(FileNames.GetDtoName(entity.Name, Dto.Creation));
+        var fakeEntityVariableName = $"fake{entity.Name}One";
+        var lowercaseEntityName = entity.Name.LowercaseFirstLetter();
+        var pkName = Entity.PrimaryKeyProperty.Name;
+        var lowercaseEntityPk = pkName.LowercaseFirstLetter();
 
-            using (FileStream fs = File.Create(classPath.FullClassPath))
-            {
-                var data = WriteTestFileText(solutionDirectory, testDirectory, srcDirectory, classPath, entity, projectBaseName);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
+        var testUtilClassPath = ClassPathHelper.IntegrationTestUtilitiesClassPath(testDirectory, projectBaseName, "");
+        var fakerClassPath = ClassPathHelper.TestFakesClassPath(testDirectory, "", entity.Name, projectBaseName);
+        var dtoClassPath = ClassPathHelper.DtoClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var featuresClassPath = ClassPathHelper.FeaturesClassPath(srcDirectory, featureName, entity.Plural, projectBaseName);
+        var exceptionsClassPath = ClassPathHelper.ExceptionsClassPath(solutionDirectory, projectBaseName);
 
-        private static string WriteTestFileText(string solutionDirectory, string testDirectory, string srcDirectory, ClassPath classPath, Entity entity, string projectBaseName)
-        {
-            var featureName = Utilities.UpdateEntityFeatureClassName(entity.Name);
-            var testFixtureName = Utilities.GetIntegrationTestFixtureName();
-            var commandName = Utilities.CommandUpdateName(entity.Name);
-            var fakeEntity = Utilities.FakerName(entity.Name);
-            var fakeUpdateDto = Utilities.FakerName(Utilities.GetDtoName(entity.Name, Dto.Update));
-            var fakeCreationDto = Utilities.FakerName(Utilities.GetDtoName(entity.Name, Dto.Creation));
-            var updateDto = Utilities.GetDtoName(entity.Name, Dto.Update);
-            var fakeEntityVariableName = $"fake{entity.Name}One";
-            var lowercaseEntityName = entity.Name.LowercaseFirstLetter();
-            var lowercaseEntityPluralName = entity.Plural.LowercaseFirstLetter();
-            var pkName = Entity.PrimaryKeyProperty.Name;
-            var lowercaseEntityPk = pkName.LowercaseFirstLetter();
+        var fakeParent = IntegrationTestServices.FakeParentTestHelpers(entity, out var fakeParentIdRuleFor);
+        var foreignEntityUsings = CraftsmanUtilities.GetForeignEntityUsings(testDirectory, entity, projectBaseName);
 
-            var testUtilClassPath = ClassPathHelper.IntegrationTestUtilitiesClassPath(testDirectory, projectBaseName, "");
-            var fakerClassPath = ClassPathHelper.TestFakesClassPath(testDirectory, "", entity.Name, projectBaseName);
-            var dtoClassPath = ClassPathHelper.DtoClassPath(solutionDirectory, "", entity.Name, projectBaseName);
-            var featuresClassPath = ClassPathHelper.FeaturesClassPath(srcDirectory, featureName, entity.Plural, projectBaseName);
-
-            var fakeParent = Utilities.FakeParentTestHelpers(entity, out var fakeParentIdRuleFor);
-            var foreignEntityUsings = Utilities.GetForeignEntityUsings(testDirectory, entity, projectBaseName);
-            
-            return @$"namespace {classPath.ClassNamespace};
+        return @$"namespace {classPath.ClassNamespace};
 
 using {fakerClassPath.ClassNamespace};
 using {testUtilClassPath.ClassNamespace};
 using {dtoClassPath.ClassNamespace};
+using {exceptionsClassPath.ClassNamespace};
+using {featuresClassPath.ClassNamespace};
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.JsonPatch;
-using {featuresClassPath.ClassNamespace};
 using static {testFixtureName};{foreignEntityUsings}
 
 public class {commandName}Tests : TestBase
@@ -73,19 +68,19 @@ public class {commandName}Tests : TestBase
         var updated{entity.Name}Dto = new {fakeUpdateDto}(){fakeParentIdRuleFor}.Generate();
         await InsertAsync({fakeEntityVariableName});
 
-        var {lowercaseEntityName} = await ExecuteDbContextAsync(db => db.{entity.Plural}.SingleOrDefaultAsync());
+        var {lowercaseEntityName} = await ExecuteDbContextAsync(db => db.{entity.Plural}
+            .FirstOrDefaultAsync({entity.Lambda} => {entity.Lambda}.Id == {fakeEntityVariableName}.Id));
         var {lowercaseEntityPk} = {lowercaseEntityName}.{pkName};
 
         // Act
         var command = new {featureName}.{commandName}({lowercaseEntityPk}, updated{entity.Name}Dto);
         await SendAsync(command);
-        var updated{entity.Name} = await ExecuteDbContextAsync(db => db.{entity.Plural}.Where({entity.Lambda} => {entity.Lambda}.{pkName} == {lowercaseEntityPk}).SingleOrDefaultAsync());
+        var updated{entity.Name} = await ExecuteDbContextAsync(db => db.{entity.Plural}.FirstOrDefaultAsync({entity.Lambda} => {entity.Lambda}.{pkName} == {lowercaseEntityPk}));
 
         // Assert
         updated{entity.Name}.Should().BeEquivalentTo(updated{entity.Name}Dto, options =>
             options.ExcludingMissingMembers());
     }}
 }}";
-        }
     }
 }

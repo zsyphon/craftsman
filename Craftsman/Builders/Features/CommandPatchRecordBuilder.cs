@@ -1,71 +1,62 @@
-﻿namespace Craftsman.Builders.Features
+﻿namespace Craftsman.Builders.Features;
+
+using Domain;
+using Domain.Enums;
+using Helpers;
+using Services;
+
+public class CommandPatchRecordBuilder
 {
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class CommandPatchRecordBuilder
+    public CommandPatchRecordBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateCommand(string solutionDirectory, string srcDirectory, Entity entity, string contextName, string projectBaseName)
-        {
-            var classPath = ClassPathHelper.FeaturesClassPath(srcDirectory, $"{Utilities.PatchEntityFeatureClassName(entity.Name)}.cs", entity.Plural, projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateCommand(string srcDirectory, Entity entity, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.FeaturesClassPath(srcDirectory, $"{FileNames.PatchEntityFeatureClassName(entity.Name)}.cs", entity.Plural, projectBaseName);
+        var fileText = GetCommandFileText(classPath.ClassNamespace, entity, srcDirectory, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
+    public static string GetCommandFileText(string classNamespace, Entity entity, string srcDirectory, string projectBaseName)
+    {
+        var className = FileNames.PatchEntityFeatureClassName(entity.Name);
+        var patchCommandName = FileNames.CommandPatchName(entity.Name);
+        var updateDto = FileNames.GetDtoName(entity.Name, Dto.Update);
 
-            using FileStream fs = File.Create(classPath.FullClassPath);
-            var data = "";
-            data = GetCommandFileText(classPath.ClassNamespace, entity, contextName, solutionDirectory, srcDirectory, projectBaseName);
-            fs.Write(Encoding.UTF8.GetBytes(data));
-        }
+        var primaryKeyPropType = Entity.PrimaryKeyProperty.Type;
+        var primaryKeyPropName = Entity.PrimaryKeyProperty.Name;
+        var entityNameLowercase = entity.Name.LowercaseFirstLetter();
+        var updatedEntityProp = $"{entityNameLowercase}ToUpdate";
+        var patchedEntityProp = $"{entityNameLowercase}ToPatch";
+        var repoInterface = FileNames.EntityRepositoryInterface(entity.Name);
+        var repoInterfaceProp = $"{entity.Name.LowercaseFirstLetter()}Repository";
+        
+        var dtoClassPath = ClassPathHelper.DtoClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var exceptionsClassPath = ClassPathHelper.ExceptionsClassPath(srcDirectory, "");
+        var entityServicesClassPath = ClassPathHelper.EntityServicesClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var servicesClassPath = ClassPathHelper.WebApiServicesClassPath(srcDirectory, "", projectBaseName);
 
-        public static string GetCommandFileText(string classNamespace, Entity entity, string contextName, string solutionDirectory, string srcDirectory, string projectBaseName)
-        {
-            var className = Utilities.PatchEntityFeatureClassName(entity.Name);
-            var patchCommandName = Utilities.CommandPatchName(entity.Name);
-            var updateDto = Utilities.GetDtoName(entity.Name, Dto.Update);
-            var manipulationValidator = Utilities.ValidatorNameGenerator(entity.Name, Validator.Manipulation);
+        return @$"namespace {classNamespace};
 
-            var primaryKeyPropType = Entity.PrimaryKeyProperty.Type;
-            var primaryKeyPropName = Entity.PrimaryKeyProperty.Name;
-            var entityNameLowercase = entity.Name.LowercaseFirstLetter();
-            var updatedEntityProp = $"{entityNameLowercase}ToUpdate";
-            var patchedEntityProp = $"{entityNameLowercase}ToPatch";
-
-            var entityClassPath = ClassPathHelper.EntityClassPath(srcDirectory, "", entity.Plural, projectBaseName);
-            var dtoClassPath = ClassPathHelper.DtoClassPath(solutionDirectory, "", entity.Name, projectBaseName);
-            var exceptionsClassPath = ClassPathHelper.ExceptionsClassPath(srcDirectory, "");
-            var contextClassPath = ClassPathHelper.DbContextClassPath(srcDirectory, "", projectBaseName);
-            var validatorsClassPath = ClassPathHelper.ValidationClassPath(srcDirectory, "", entity.Plural, projectBaseName);
-
-            return @$"namespace {classNamespace};
-
-using {entityClassPath.ClassNamespace};
 using {dtoClassPath.ClassNamespace};
 using {exceptionsClassPath.ClassNamespace};
-using {contextClassPath.ClassNamespace};
-using {validatorsClassPath.ClassNamespace};
+using {entityServicesClassPath.ClassNamespace};
+using {servicesClassPath.ClassNamespace};
 using AutoMapper;
-using AutoMapper.QueryableExtensions;
 using FluentValidation.Results;
 using MediatR;
 using Microsoft.AspNetCore.JsonPatch;
-using Microsoft.EntityFrameworkCore;
-using System.Threading;
-using System.Threading.Tasks;
 
 public static class {className}
 {{
     public class {patchCommandName} : IRequest<bool>
     {{
-        public {primaryKeyPropType} {primaryKeyPropName} {{ get; set; }}
-        public JsonPatchDocument<{updateDto}> PatchDoc {{ get; set; }}
+        public readonly {primaryKeyPropType} {primaryKeyPropName};
+        public readonly JsonPatchDocument<{updateDto}> PatchDoc;
 
         public {patchCommandName}({primaryKeyPropType} {entityNameLowercase}, JsonPatchDocument<{updateDto}> patchDoc)
         {{
@@ -76,13 +67,15 @@ public static class {className}
 
     public class Handler : IRequestHandler<{patchCommandName}, bool>
     {{
-        private readonly {contextName} _db;
+        private readonly {repoInterface} _{repoInterfaceProp};
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
 
-        public Handler({contextName} db, IMapper mapper)
+        public Handler({repoInterface} {repoInterfaceProp}, IUnitOfWork unitOfWork, IMapper mapper)
         {{
             _mapper = mapper;
-            _db = db;
+            _{repoInterfaceProp} = {repoInterfaceProp};
+            _unitOfWork = unitOfWork;
         }}
 
         public async Task<bool> Handle({patchCommandName} request, CancellationToken cancellationToken)
@@ -94,22 +87,17 @@ public static class {className}
                         new ValidationFailure(""Patch Document"",""Invalid patch doc."")
                     }});
 
-            var {updatedEntityProp} = await _db.{entity.Plural}
-                .FirstOrDefaultAsync({entity.Lambda} => {entity.Lambda}.{primaryKeyPropName} == request.{primaryKeyPropName});
+            var {updatedEntityProp} = await _{repoInterfaceProp}.GetById(request.Id, cancellationToken: cancellationToken);
 
-            if ({updatedEntityProp} == null)
-                throw new NotFoundException(""{entity.Name}"", request.{primaryKeyPropName});
-
-            var {patchedEntityProp} = _mapper.Map<{updateDto}>({updatedEntityProp}); // map the {entityNameLowercase} we got from the database to an updatable {entityNameLowercase} model
-            request.PatchDoc.ApplyTo({patchedEntityProp}); // apply patchdoc updates to the updatable {entityNameLowercase}
+            var {patchedEntityProp} = _mapper.Map<{updateDto}>({updatedEntityProp});
+            request.PatchDoc.ApplyTo({patchedEntityProp});
 
             {updatedEntityProp}.Update({patchedEntityProp});
-            await _db.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitChanges(cancellationToken);
 
             return true;
         }}
     }}
 }}";
-        }
     }
 }

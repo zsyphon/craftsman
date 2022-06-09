@@ -1,25 +1,27 @@
-﻿namespace Craftsman.Builders.Projects
+﻿namespace Craftsman.Builders.Projects;
+
+using Helpers;
+using Services;
+
+public class AuthServerProjBuilder
 {
-    using System;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using System.IO;
-    using System.IO.Abstractions;
-    using System.Text;
-    using Enums;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class AuthServerProjBuilder
+    public AuthServerProjBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateProject(string solutionDirectory, string projectBaseName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.WebApiProjectClassPath(solutionDirectory, projectBaseName);
-            var fileText = ProjectFileText();
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
+        _utilities = utilities;
+    }
 
-        public static string ProjectFileText()
-        {
-            return @$"<Project Sdk=""Microsoft.NET.Sdk.Web"">
+    public void CreateProject(string solutionDirectory, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.WebApiProjectClassPath(solutionDirectory, projectBaseName);
+        var fileText = ProjectFileText();
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    public static string ProjectFileText()
+    {
+        return @$"<Project Sdk=""Microsoft.NET.Sdk.Web"">
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -29,7 +31,7 @@
   <ItemGroup>
     <PackageReference Include=""Duende.IdentityServer"" Version=""5.2.1"" />    
     <PackageReference Include=""Microsoft.AspNetCore.Authentication.Google"" Version=""6.0.0"" />
-    <PackageReference Include=""Serilog.AspNetCore"" Version=""4.1.0"" />
+    <PackageReference Include=""Serilog.AspNetCore"" Version=""5.0.0"" />
   </ItemGroup>
 
   <Target Name=""Tailwind"" BeforeTargets=""Build"">
@@ -38,6 +40,5 @@
   </Target>
 
 </Project>";
-        }
     }
 }

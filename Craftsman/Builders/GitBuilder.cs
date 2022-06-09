@@ -1,29 +1,33 @@
-﻿namespace Craftsman.Builders
+﻿namespace Craftsman.Builders;
+
+using System.IO.Abstractions;
+using System.Text;
+using Exceptions;
+
+public class GitBuilder
 {
-    using Craftsman.Exceptions;
-    using System.IO;
-    using System.Text;
+    private readonly IFileSystem _fileSystem;
 
-    public class GitBuilder
+    public GitBuilder(IFileSystem fileSystem)
     {
-        public static void CreateGitIgnore(string solutionDirectory)
-        {
-            var filePath = Path.Combine(solutionDirectory, ".gitignore");
+        _fileSystem = fileSystem;
+    }
 
-            if (File.Exists(filePath))
-                throw new FileAlreadyExistsException(filePath);
+    public void CreateGitIgnore(string solutionDirectory)
+    {
+        var filePath = _fileSystem.Path.Combine(solutionDirectory, ".gitignore");
 
-            using (FileStream fs = File.Create(filePath))
-            {
-                var data = "";
-                data = GetGitIgnoreFileText();
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
+        if (_fileSystem.File.Exists(filePath))
+            throw new FileAlreadyExistsException(filePath);
 
-        public static string GetGitIgnoreFileText()
-        {
-            return @"/.build/
+        var data = GetGitIgnoreFileText();
+        using var fs = _fileSystem.File.Create(filePath);
+        fs.Write(Encoding.UTF8.GetBytes(data));
+    }
+
+    public static string GetGitIgnoreFileText()
+    {
+        return @"/.build/
 /global.json
 QueryBaseline.cs
 
@@ -328,6 +332,5 @@ __pycache__/
 .env
 
 ";
-        }
     }
 }

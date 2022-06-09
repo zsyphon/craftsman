@@ -1,46 +1,42 @@
-﻿namespace Craftsman.Builders.Features
+﻿namespace Craftsman.Builders.Features;
+
+using System;
+using Domain;
+using Helpers;
+using Services;
+
+public class ProducerBuilder
 {
-    using System;
-    using System.IO;
-    using System.Text;
-    using Exceptions;
-    using Helpers;
-    using Models;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class ProducerBuilder
+    public ProducerBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateProducerFeature(string solutionDirectory, string srcDirectory, Producer producer, string projectBaseName)
-        {
-            var classPath = ClassPathHelper.ProducerFeaturesClassPath(srcDirectory, $"{producer.ProducerName}.cs", producer.DomainDirectory, projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateProducerFeature(string solutionDirectory, string srcDirectory, Producer producer, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.ProducerFeaturesClassPath(srcDirectory, $"{producer.ProducerName}.cs", producer.DomainDirectory, projectBaseName);
+        var fileText = GetProducerRegistration(classPath.ClassNamespace, producer, solutionDirectory, srcDirectory, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
-
-            using FileStream fs = File.Create(classPath.FullClassPath);
-            var data = GetProducerRegistration(classPath.ClassNamespace, producer, solutionDirectory, srcDirectory, projectBaseName);
-
-            fs.Write(Encoding.UTF8.GetBytes(data));
-        }
-
-        public static string GetProducerRegistration(string classNamespace, Producer producer, string solutionDirectory, string srcDirectory, string projectBaseName)
-        {
-            var context = Utilities.GetDbContext(srcDirectory, projectBaseName);
-            var contextClassPath = ClassPathHelper.DbContextClassPath(srcDirectory, "", projectBaseName);
-            var dbReadOnly = producer.UsesDb ? @$"{Environment.NewLine}    private readonly {context} _db;" : "";
-            var dbProp = producer.UsesDb ? @$"{context} db, " : "";
-            var assignDb = producer.UsesDb ? @$"{Environment.NewLine}        _db = db;" : "";
-            var contextUsing = producer.UsesDb ? $@"
+    public string GetProducerRegistration(string classNamespace, Producer producer, string solutionDirectory, string srcDirectory, string projectBaseName)
+    {
+        var context = _utilities.GetDbContext(srcDirectory, projectBaseName);
+        var contextClassPath = ClassPathHelper.DbContextClassPath(srcDirectory, "", projectBaseName);
+        var dbReadOnly = producer.UsesDb ? @$"{Environment.NewLine}        private readonly {context} _db;" : "";
+        var dbProp = producer.UsesDb ? @$"{context} db, " : "";
+        var assignDb = producer.UsesDb ? @$"{Environment.NewLine}            _db = db;" : "";
+        var contextUsing = producer.UsesDb ? $@"
 using {contextClassPath.ClassNamespace};" : "";
 
-            var messagesClassPath = ClassPathHelper.MessagesClassPath(solutionDirectory, "");
-            
-            var propTypeToReturn = "bool";
-            var commandName = $"{producer.ProducerName}Command";
+        var messagesClassPath = ClassPathHelper.MessagesClassPath(solutionDirectory, "");
 
-            return @$"namespace {classNamespace};
+        var propTypeToReturn = "bool";
+        var commandName = $"{producer.ProducerName}Command";
+
+        return @$"namespace {classNamespace};
 
 using {messagesClassPath.ClassNamespace};
 using AutoMapper;
@@ -73,16 +69,15 @@ public static class {producer.ProducerName}
 
         public async Task<{propTypeToReturn}> Handle({commandName} request, CancellationToken cancellationToken)
         {{
-            var message = new
+            var message = new {FileNames.MessageClassName(producer.MessageName)}
             {{
                 // map content to message here or with automapper
             }};
-            await _publishEndpoint.Publish<{producer.MessageName}>(message);
+            await _publishEndpoint.Publish<{FileNames.MessageInterfaceName(producer.MessageName)}>(message, cancellationToken);
 
             return true;
         }}
     }}
 }}";
-        }
     }
 }

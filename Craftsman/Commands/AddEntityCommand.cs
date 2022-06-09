@@ -1,124 +1,90 @@
-﻿namespace Craftsman.Commands
+namespace Craftsman.Commands;
+
+using System.IO.Abstractions;
+using Builders;
+using Domain;
+using Helpers;
+using MediatR;
+using Services;
+using Spectre.Console;
+using Spectre.Console.Cli;
+
+public class AddEntityCommand : Command<AddEntityCommand.Settings>
 {
-    using Craftsman.Builders;
-    using Craftsman.Builders.Seeders;
-    using Craftsman.Builders.Tests.Utilities;
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System;
-    using System.IO;
-    using System.IO.Abstractions;
-    using System.Linq;
-    using static Helpers.ConsoleWriter;
-    using Spectre.Console;
+    private readonly IFileSystem _fileSystem;
+    private readonly IConsoleWriter _consoleWriter;
+    private readonly ICraftsmanUtilities _utilities;
+    private readonly IScaffoldingDirectoryStore _scaffoldingDirectoryStore;
+    private readonly IFileParsingHelper _fileParsingHelper;
+    private readonly IMediator _mediator;
 
-    public static class AddEntityCommand
+    public AddEntityCommand(IFileSystem fileSystem,
+        IConsoleWriter consoleWriter,
+        ICraftsmanUtilities utilities,
+        IScaffoldingDirectoryStore scaffoldingDirectoryStore,
+        IFileParsingHelper fileParsingHelper, IMediator mediator)
     {
-        public static void Help()
-        {
-            WriteHelpHeader(@$"Description:");
-            WriteHelpText(@$"   This command can add one or more new entities to your Wrapt project using a formatted yaml or json file.{Environment.NewLine}");
+        _fileSystem = fileSystem;
+        _consoleWriter = consoleWriter;
+        _utilities = utilities;
+        _scaffoldingDirectoryStore = scaffoldingDirectoryStore;
+        _fileParsingHelper = fileParsingHelper;
+        _mediator = mediator;
+    }
 
-            WriteHelpHeader(@$"Usage:");
-            WriteHelpText(@$"   craftsman add:entity [options] <filepath>");
-            WriteHelpText(@$"   or");
-            WriteHelpText(@$"   craftsman add:entities [options] <filepath>");
+    public class Settings : CommandSettings
+    {
+        [CommandArgument(0, "<Filepath>")]
+        public string Filepath { get; set; }
+    }
 
-            WriteHelpText(Environment.NewLine);
-            WriteHelpHeader(@$"Arguments:");
-            WriteHelpText(@$"   filepath         The full filepath for the yaml or json file that lists the new entities that you want to add to your API.");
+    public override int Execute(CommandContext context, Settings settings)
+    {
+        var potentialBoundaryDirectory = _utilities.GetRootDir();
 
-            WriteHelpText(Environment.NewLine);
-            WriteHelpHeader(@$"Options:");
-            WriteHelpText(@$"   -h, --help          Display this help message. No filepath is needed to display the help message.");
+        var solutionDirectory = _fileSystem.Directory.GetParent(potentialBoundaryDirectory)?.FullName;
+        _utilities.IsSolutionDirectoryGuard(solutionDirectory);
+        _scaffoldingDirectoryStore.SetSolutionDirectory(solutionDirectory);
 
-            WriteHelpText(Environment.NewLine);
-            WriteHelpHeader(@$"Example:");
-            WriteHelpText(@$"   craftsman add:entities C:\fullpath\newentity.yaml");
-            WriteHelpText(@$"   craftsman add:entities C:\fullpath\newentity.yml");
-            WriteHelpText(@$"   craftsman add:entities C:\fullpath\newentity.json");
-            WriteHelpText(Environment.NewLine);
-        }
+        var projectName = new DirectoryInfo(potentialBoundaryDirectory).Name;
+        _scaffoldingDirectoryStore.SetBoundedContextDirectoryAndProject(projectName);
+        _utilities.IsBoundedContextDirectoryGuard();
 
-        public static void Run(string filePath, string solutionDirectory, IFileSystem fileSystem, Verbosity verbosity)
-        {
-            try
-            {
-                FileParsingHelper.RunInitialTemplateParsingGuards(filePath);
-                var template = FileParsingHelper.GetTemplateFromFile<AddEntityTemplate>(filePath);
+        // TODO make injectable
+        _fileParsingHelper.RunInitialTemplateParsingGuards(settings.Filepath);
+        var template = _fileParsingHelper.GetTemplateFromFile<AddEntityTemplate>(settings.Filepath);
+        _consoleWriter.WriteLogMessage($"Your template file was parsed successfully");
 
-                var srcDirectory = Path.Combine(solutionDirectory, "src");
-                var testDirectory = Path.Combine(solutionDirectory, "tests");
+        FileParsingHelper.RunPrimaryKeyGuard(template.Entities);
 
-                Utilities.IsBoundedContextDirectoryGuard(srcDirectory, testDirectory);
-                var projectBaseName = Directory.GetParent(srcDirectory).Name;
-                template = GetDbContext(srcDirectory, template, projectBaseName);
-                template.SolutionName = projectBaseName;
+        RunEntityBuilders(solutionDirectory, _scaffoldingDirectoryStore.SrcDirectory, _scaffoldingDirectoryStore.TestDirectory, template);
 
-                WriteHelpText($"Your template file was parsed successfully.");
+        _consoleWriter.WriteHelpHeader($"{Environment.NewLine}Your entities have been successfully added. Keep up the good work!");
+        return 0;
+    }
 
-                FileParsingHelper.RunPrimaryKeyGuard(template.Entities);
+    private void RunEntityBuilders(string solutionDirectory, string srcDirectory, string testDirectory, AddEntityTemplate template)
+    {
+        template = GetDbContext(_scaffoldingDirectoryStore.SrcDirectory, template, _scaffoldingDirectoryStore.ProjectBaseName);
+        template.SolutionName = _scaffoldingDirectoryStore.ProjectBaseName;
+        var useSoftDelete = _utilities.ProjectUsesSoftDelete(srcDirectory, _scaffoldingDirectoryStore.ProjectBaseName);
 
-                // add all files based on the given template config
-                RunEntityBuilders(solutionDirectory, srcDirectory, testDirectory, template, fileSystem);
+        //entities
+        new EntityScaffoldingService(_utilities, _fileSystem, _mediator).ScaffoldEntities(solutionDirectory,
+            srcDirectory,
+            testDirectory,
+            _scaffoldingDirectoryStore.ProjectBaseName,
+            template.Entities,
+            template.DbContextName,
+            template.AddSwaggerComments,
+            useSoftDelete);
 
-                WriteHelpHeader($"{Environment.NewLine}Your entities have been successfully added. Keep up the good work!");
-            }
-            catch (Exception e)
-            {
-                if (e is IsNotBoundedContextDirectory)
-                {
-                    WriteError($"{e.Message}");
-                }
-                else
-                {
-                    AnsiConsole.WriteException(e, new ExceptionSettings
-                    {
-                        Format = ExceptionFormats.ShortenEverything | ExceptionFormats.ShowLinks,
-                        Style = new ExceptionStyle
-                        {
-                            Exception = new Style().Foreground(Color.Grey),
-                            Message = new Style().Foreground(Color.White),
-                            NonEmphasized = new Style().Foreground(Color.Cornsilk1),
-                            Parenthesis = new Style().Foreground(Color.Cornsilk1),
-                            Method = new Style().Foreground(Color.Red),
-                            ParameterName = new Style().Foreground(Color.Cornsilk1),
-                            ParameterType = new Style().Foreground(Color.Red),
-                            Path = new Style().Foreground(Color.Red),
-                            LineNumber = new Style().Foreground(Color.Cornsilk1),
-                        }
-                    });
-                }
-            }
-        }
+        new DbContextModifier(_fileSystem).AddDbSet(srcDirectory, template.Entities, template.DbContextName, _scaffoldingDirectoryStore.ProjectBaseName);
+    }
 
-        private static void RunEntityBuilders(string solutionDirectory, string srcDirectory, string testDirectory, AddEntityTemplate template, IFileSystem fileSystem)
-        {
-            var projectBaseName = template.SolutionName;
-            var useSoftDelete = Utilities.ProjectUsesSoftDelete(srcDirectory, projectBaseName);
-            
-            //entities
-            EntityScaffolding.ScaffoldEntities(solutionDirectory,
-                srcDirectory,
-                testDirectory,
-                projectBaseName,
-                template.Entities,
-                template.DbContextName,
-                "",
-                template.AddSwaggerComments,
-                useSoftDelete,
-                fileSystem);
-
-            SeederModifier.AddSeeders(srcDirectory, template.Entities, template.DbContextName, projectBaseName);
-            DbContextModifier.AddDbSet(srcDirectory, template.Entities, template.DbContextName, projectBaseName);
-        }
-
-        private static AddEntityTemplate GetDbContext(string srcDirectory, AddEntityTemplate template, string projectBaseName)
-        {
-            template.DbContextName = Utilities.GetDbContext(srcDirectory, projectBaseName);
-            return template;
-        }
+    private AddEntityTemplate GetDbContext(string srcDirectory, AddEntityTemplate template, string projectBaseName)
+    {
+        template.DbContextName = _utilities.GetDbContext(srcDirectory, projectBaseName);
+        return template;
     }
 }

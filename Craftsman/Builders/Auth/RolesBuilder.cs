@@ -1,20 +1,27 @@
-﻿namespace Craftsman.Builders.Auth
-{
-    using System.IO.Abstractions;
-    using Helpers;
+﻿namespace Craftsman.Builders.Auth;
 
-    public class RolesBuilder
+using Helpers;
+using Services;
+
+public class RolesBuilder
+{
+    private readonly ICraftsmanUtilities _utilities;
+
+    public RolesBuilder(ICraftsmanUtilities utilities)
     {
-        public static void GetRoles(string solutionDirectory, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.SharedKernelDomainClassPath(solutionDirectory, "Roles.cs");
-            var fileText = GetRolesText(classPath.ClassNamespace);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
-        
-        private static string GetRolesText(string classNamespace)
-        {
-            return @$"namespace {classNamespace}
+        _utilities = utilities;
+    }
+
+    public void GetRoles(string solutionDirectory)
+    {
+        var classPath = ClassPathHelper.SharedKernelDomainClassPath(solutionDirectory, "Roles.cs");
+        var fileText = GetRolesText(classPath.ClassNamespace);
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    private static string GetRolesText(string classNamespace)
+    {
+        return @$"namespace {classNamespace}
 {{
     using System.Collections.Generic;
     using System.Linq;
@@ -35,6 +42,5 @@
         }}
     }}
 }}";
-        }
     }
 }

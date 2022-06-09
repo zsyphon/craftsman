@@ -1,30 +1,119 @@
-﻿namespace Craftsman.Builders.Tests.UnitTests
+﻿namespace Craftsman.Builders.Tests.UnitTests;
+
+using System.IO;
+using Helpers;
+using Services;
+
+public class RolePermissionsUnitTestBuilder
 {
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.IO.Abstractions;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class RolePermissionsUnitTestBuilder
+    public RolePermissionsUnitTestBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateTests(string solutionDirectory, string testDirectory, string srcDirectory, string projectBaseName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.UnitTestEntityTestsClassPath(testDirectory, $"RolePermissionTests.cs", "RolePermissions", projectBaseName);
-            var fileText = WriteTestFileText(solutionDirectory, srcDirectory, classPath, projectBaseName);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
+        _utilities = utilities;
+    }
 
-        private static string WriteTestFileText(string solutionDirectory, string srcDirectory, ClassPath classPath, string projectBaseName)
-        {
-            var wrapperClassPath = ClassPathHelper.WrappersClassPath(srcDirectory, "", projectBaseName);
-            var domainPolicyClassPath = ClassPathHelper.PolicyDomainClassPath(srcDirectory, "", projectBaseName);
-            var entityClassPath = ClassPathHelper.EntityClassPath(srcDirectory, "", "RolePermissions", projectBaseName);
-            var dtoClassPath = ClassPathHelper.DtoClassPath(solutionDirectory, "", "RolePermission", projectBaseName);
-            var rolesClassPath = ClassPathHelper.SharedKernelDomainClassPath(solutionDirectory, "");
+    public void CreateRolePermissionTests(string solutionDirectory, string testDirectory, string srcDirectory, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.UnitTestEntityTestsClassPath(testDirectory, $"CreateRolePermissionTests.cs", "RolePermissions", projectBaseName);
+        var fileText = CreateFileText(solutionDirectory, srcDirectory, classPath, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            return @$"namespace {classPath.ClassNamespace};
+    public void UpdateRolePermissionTests(string solutionDirectory, string testDirectory, string srcDirectory, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.UnitTestEntityTestsClassPath(testDirectory, $"UpdateRolePermissionTests.cs", "RolePermissions", projectBaseName);
+        var fileText = UpdateFileText(solutionDirectory, srcDirectory, classPath, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    private static string CreateFileText(string solutionDirectory, string srcDirectory, ClassPath classPath, string projectBaseName)
+    {
+        var wrapperClassPath = ClassPathHelper.WrappersClassPath(srcDirectory, "", projectBaseName);
+        var domainPolicyClassPath = ClassPathHelper.PolicyDomainClassPath(srcDirectory, "", projectBaseName);
+        var entityClassPath = ClassPathHelper.EntityClassPath(srcDirectory, "", "RolePermissions", projectBaseName);
+        var dtoClassPath = ClassPathHelper.DtoClassPath(srcDirectory, "", "RolePermissions", projectBaseName);
+        var rolesClassPath = ClassPathHelper.SharedKernelDomainClassPath(solutionDirectory, "");
+
+        return @$"namespace {classPath.ClassNamespace};
+
+using {domainPolicyClassPath.ClassNamespace};
+using {entityClassPath.ClassNamespace};
+using {wrapperClassPath.ClassNamespace};
+using {dtoClassPath.ClassNamespace};
+using {rolesClassPath.ClassNamespace};
+using Bogus;
+using FluentAssertions;
+using NUnit.Framework;
+
+[Parallelizable]
+public class {Path.GetFileNameWithoutExtension(classPath.FullClassPath)}
+{{
+    private readonly Faker _faker;
+
+    public {Path.GetFileNameWithoutExtension(classPath.FullClassPath)}()
+    {{
+        _faker = new Faker();
+    }}
+    
+    [Test]
+    public void can_create_valid_rolepermission()
+    {{
+        // Arrange
+        var permission = _faker.PickRandom(Permissions.List());
+        var role = _faker.PickRandom(Roles.List());
+
+        // Act
+        var newRolePermission = RolePermission.Create(new RolePermissionForCreationDto()
+        {{
+            Permission = permission,
+            Role = role
+        }});
+        
+        // Assert
+        newRolePermission.Permission.Should().Be(permission);
+        newRolePermission.Role.Should().Be(role);
+    }}
+    
+    [Test]
+    public void can_NOT_create_rolepermission_with_invalid_role()
+    {{
+        // Arrange
+        var rolePermission = () => RolePermission.Create(new RolePermissionForCreationDto()
+        {{
+            Permission = _faker.PickRandom(Permissions.List()),
+            Role = _faker.Lorem.Word()
+        }});
+
+        // Act + Assert
+        rolePermission.Should().Throw<FluentValidation.ValidationException>();
+    }}
+    
+    [Test]
+    public void can_NOT_create_rolepermission_with_invalid_permission()
+    {{
+        // Arrange
+        var rolePermission = () => RolePermission.Create(new RolePermissionForCreationDto()
+        {{
+            Role = _faker.PickRandom(Roles.List()),
+            Permission = _faker.Lorem.Word()
+        }});
+
+        // Act + Assert
+        rolePermission.Should().Throw<FluentValidation.ValidationException>();
+    }}
+}}";
+    }
+
+    private static string UpdateFileText(string solutionDirectory, string srcDirectory, ClassPath classPath, string projectBaseName)
+    {
+        var wrapperClassPath = ClassPathHelper.WrappersClassPath(srcDirectory, "", projectBaseName);
+        var domainPolicyClassPath = ClassPathHelper.PolicyDomainClassPath(srcDirectory, "", projectBaseName);
+        var entityClassPath = ClassPathHelper.EntityClassPath(srcDirectory, "", "RolePermissions", projectBaseName);
+        var dtoClassPath = ClassPathHelper.DtoClassPath(srcDirectory, "", "RolePermissions", projectBaseName);
+        var rolesClassPath = ClassPathHelper.SharedKernelDomainClassPath(solutionDirectory, "");
+
+        return @$"namespace {classPath.ClassNamespace};
 
 using {domainPolicyClassPath.ClassNamespace};
 using {entityClassPath.ClassNamespace};
@@ -45,42 +134,66 @@ public class {Path.GetFileNameWithoutExtension(classPath.FullClassPath)}
     }}
     
     [Test]
-    public void can_create_valid_rolepermission()
+    public void can_update_rolepermission()
     {{
+        // Arrange
+        var rolePermission = RolePermission.Create(new RolePermissionForCreationDto()
+        {{
+            Permission = _faker.PickRandom(Permissions.List()),
+            Role = _faker.PickRandom(Roles.List())
+        }});
         var permission = _faker.PickRandom(Permissions.List());
         var role = _faker.PickRandom(Roles.List());
-        var newRolePermission = RolePermission.Create(new RolePermissionForCreationDto()
+        
+        // Act
+        rolePermission.Update(new RolePermissionForUpdateDto()
         {{
             Permission = permission,
             Role = role
         }});
         
-        newRolePermission.Permission.Should().Be(permission);
-        newRolePermission.Role.Should().Be(role);
+        // Assert
+        rolePermission.Permission.Should().Be(permission);
+        rolePermission.Role.Should().Be(role);
     }}
     
     [Test]
-    public void can_NOT_create_rolepermission_with_invalid_role()
+    public void can_NOT_update_rolepermission_with_invalid_role()
     {{
-        var rolePermission = () => RolePermission.Create(new RolePermissionForCreationDto()
+        // Arrange
+        var rolePermission = RolePermission.Create(new RolePermissionForCreationDto()
+        {{
+            Permission = _faker.PickRandom(Permissions.List()),
+            Role = _faker.PickRandom(Roles.List())
+        }});
+        var updateRolePermission = () => rolePermission.Update(new RolePermissionForUpdateDto()
         {{
             Permission = _faker.PickRandom(Permissions.List()),
             Role = _faker.Lorem.Word()
         }});
-        rolePermission.Should().Throw<FluentValidation.ValidationException>();
+
+        // Act + Assert
+        updateRolePermission.Should().Throw<FluentValidation.ValidationException>();
     }}
     
     [Test]
-    public void can_NOT_create_rolepermission_with_invalid_permission()
+    public void can_NOT_update_rolepermission_with_invalid_permission()
     {{
-        var rolePermission = () => RolePermission.Create(new RolePermissionForCreationDto()
+        // Arrange
+        var rolePermission = RolePermission.Create(new RolePermissionForCreationDto()
         {{
-            Role = _faker.PickRandom(Roles.List()),
-            Permission = _faker.Lorem.Word()
+            Permission = _faker.PickRandom(Permissions.List()),
+            Role = _faker.PickRandom(Roles.List())
         }});
-        rolePermission.Should().Throw<FluentValidation.ValidationException>();
+        var updateRolePermission = () => rolePermission.Update(new RolePermissionForUpdateDto()
+        {{
+            Permission = _faker.Lorem.Word(),
+            Role = _faker.PickRandom(Roles.List())
+        }});
+
+        // Act + Assert
+        updateRolePermission.Should().Throw<FluentValidation.ValidationException>();
     }}
 }}";
-        }
     }
 }

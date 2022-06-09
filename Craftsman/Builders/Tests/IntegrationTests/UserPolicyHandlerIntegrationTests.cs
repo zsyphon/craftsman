@@ -1,35 +1,35 @@
-﻿namespace Craftsman.Builders.Tests.IntegrationTests
+﻿namespace Craftsman.Builders.Tests.IntegrationTests;
+
+using Craftsman.Services;
+using Helpers;
+
+public class UserPolicyHandlerIntegrationTests
 {
-    using System;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.IO.Abstractions;
-    using System.Text;
-    using Enums;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class UserPolicyHandlerIntegrationTests
+    public UserPolicyHandlerIntegrationTests(ICraftsmanUtilities utilities)
     {
-        public static void CreateTests(string solutionDirectory, string testDirectory, string srcDirectory, string projectBaseName,
-            IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.ServicesTestClassPath(testDirectory, $"UserPolicyHandlerTests.cs", projectBaseName);
-            var fileText =  WriteTestFileText(solutionDirectory, testDirectory, srcDirectory, classPath, projectBaseName);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
+        _utilities = utilities;
+    }
 
-        private static string WriteTestFileText(string solutionDirectory, string testDirectory, string srcDirectory, ClassPath classPath, string projectBaseName)
-        {
-            var testFixtureName = Utilities.GetIntegrationTestFixtureName();
-            
-            var servicesClassPath = ClassPathHelper.WebApiServicesClassPath(srcDirectory, "", projectBaseName);
-            var policyDomainClassPath = ClassPathHelper.PolicyDomainClassPath(srcDirectory, "", projectBaseName);
-            var entityClassPath = ClassPathHelper.EntityClassPath(testDirectory, "", "RolePermissions", projectBaseName);
-            var dtoClassPath = ClassPathHelper.DtoClassPath(solutionDirectory, "", "RolePermission", projectBaseName);
-            var rolesClassPath = ClassPathHelper.SharedKernelDomainClassPath(solutionDirectory, "");
+    public void CreateTests(string solutionDirectory, string testDirectory, string srcDirectory, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.ServicesTestClassPath(testDirectory, $"UserPolicyHandlerTests.cs", projectBaseName);
+        var fileText = WriteTestFileText(solutionDirectory, testDirectory, srcDirectory, classPath, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            return @$"namespace {classPath.ClassNamespace};
+    private static string WriteTestFileText(string solutionDirectory, string testDirectory, string srcDirectory, ClassPath classPath, string projectBaseName)
+    {
+        var testFixtureName = FileNames.GetIntegrationTestFixtureName();
+
+        var servicesClassPath = ClassPathHelper.WebApiServicesClassPath(srcDirectory, "", projectBaseName);
+        var policyDomainClassPath = ClassPathHelper.PolicyDomainClassPath(srcDirectory, "", projectBaseName);
+        var entityClassPath = ClassPathHelper.EntityClassPath(testDirectory, "", "RolePermissions", projectBaseName);
+        var dtoClassPath = ClassPathHelper.DtoClassPath(srcDirectory, "", "RolePermissions", projectBaseName);
+        var rolesClassPath = ClassPathHelper.SharedKernelDomainClassPath(solutionDirectory, "");
+
+        return @$"namespace {classPath.ClassNamespace};
 
 using {servicesClassPath.ClassNamespace};
 using {policyDomainClassPath.ClassNamespace};
@@ -74,10 +74,24 @@ public class UserPolicyHandlerTests : TestBase
     }}
     
     [Test]
-    public async Task superadmin_gets_all_permissions()
+    public async Task superadmin_user_gets_all_permissions()
     {{
         // Arrange
         SetUserRole(Roles.SuperAdmin);
+
+        // Act
+        var userPolicyHandler = GetService<IUserPolicyHandler>();
+        var permissions = await userPolicyHandler.GetUserPermissions();
+        
+        // Assert
+        permissions.Should().BeEquivalentTo(Permissions.List().ToArray());
+    }}
+    
+    [Test]
+    public async Task superadmin_machine_gets_all_permissions()
+    {{
+        // Arrange
+        SetMachineRole(Roles.SuperAdmin);
 
         // Act
         var userPolicyHandler = GetService<IUserPolicyHandler>();
@@ -114,9 +128,6 @@ public class UserPolicyHandlerTests : TestBase
     [Test]
     public async Task claims_role_duplicate_permissions_removed()
     {{
-        // duplicates shouldn't be possible in the database OOTB with the RolePermission validation
-        // (and unit tests), but leaving this for redundancy and safer modification possibilities
-        
         // Arrange
         var permissionToAssign = _faker.PickRandom(Permissions.List());
         var nonSuperAdminRole = _faker.PickRandom(Roles.List().Where(p => p != Roles.SuperAdmin));
@@ -138,10 +149,9 @@ public class UserPolicyHandlerTests : TestBase
         var permissions = await userPolicyHandler.GetUserPermissions();
         
         // Assert
-        permissions.Should().HaveCount(1);
+        permissions.Count(p => p == permissionToAssign).Should().Be(1);
         permissions.Should().Contain(permissionToAssign);
     }}
 }}";
-        }
     }
 }

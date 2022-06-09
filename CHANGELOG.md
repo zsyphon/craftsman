@@ -7,14 +7,192 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 > Semantic versioning will come once I hit v1, but at this point each `0.x` release may have breaking changes as I iron out the kinks of the framework. 
 
-## [Unreleased]
+## Unreleased
+
+* None yet!
+
+## [0.15.0] - 06/05/2022
 
 ### Added
 
-* A `Dockerfile` and `.dockerignore` will be added to each bounded context automatically
+* Open Telemetry and Jaeger tracing support
+
+* `ValueObject` class scaffolding to `SharedKernel`
+  
+* Domain Event support for all `BaseEntities`. Automatically scaffolded for the `Create` and `Update` methods that call messages in a new `DomainEvents` directory under that entity. It works by adding messages to a new `DomainEvents` prop on each entity and publishing all messages on an EF save using MediatR. 
+
+  * Unit tests are also scaffolded
+  * To consume a message, you can use a MediatR `INotificationHandler` like normal. For example:
+  
+  ```c#
+  namespace RecipeManagement.Domain.Authors.Features;
+  
+  using System.Reflection.Metadata;
+  using DomainEvents;
+  using MediatR;
+  
+  public class LogAuthor : INotificationHandler<AuthorAdded>
+  {
+      private readonly ILogger<LogAuthor> _logger;
+  
+      public LogAuthor(ILogger<LogAuthor> logger)
+      {
+          _logger = logger;
+      }
+  
+      public async Task Handle(AuthorAdded notification, CancellationToken cancellationToken)
+      {
+          _logger.LogInformation("Author added: {AuthorName}", notification.Author.Name);
+      }
+  }
+  ```
+  
+
+* Smart enum property support. Just add a property and give it a list of options using the `SmartNames` property and you're good to go. They will all be strings with smart enum backing. Attributes like filtering and sorting are supported
+
+  ```yaml
+  
+    Entities:
+    - Name: Recipe
+      Features:
+      #...
+      Properties:
+      - Name: Title
+        Type: string
+        CanFilter: true
+        CanSort: true
+      - Name: Visibility
+        SmartNames:
+        - Public
+        - Friends Only
+        - Private
+        CanFilter: true
+        CanSort: true
+  ```
+
+  
+
+
+### Updated
+
+* CLI commands no longer use `:` and use the more traditional space delimiter. For exmaple, `craftsman new example`
+
+* Moved from old Startup model to new Program only for .NET 6. Includes updating test projects and service registrations for compatible setup
+
+* All features will now use a repository instead of using dbcontext directly. 
+
+* Batch does not require a dbset name anymore, but does require a plural entity name for the FK if using one. Functionally, this is the same as before just with a new name for the prop: `ParentEntityPlural`
+
+* Entity props now `virtual` by default with a `protected` constructor for mocking in unit tests. This is mostly for foreign entities (since we don't have EF to populate our foreign entities in unit tests), but in order to have our mocks accurately reflect all our props, we need to make them virtual. For example:
+
+  ```c#
+  private static Author GetMockAuthor()
+  {
+    	// my fake data base generated with AutoBogus under the hood
+      var fakeRecipe = FakeRecipe.Generate();
+      var forCreation = new FakeAuthorForCreationDto().Generate();
+      forCreation.RecipeId = fakeRecipe.Id;
+      
+    	// FakeItEasy making entity assignment easy in lieu of EF
+      var fakeAuthor = A.Fake<Author>(x => x.Wrapping(Author.Create(forCreation)));
+      A.CallTo(() => fakeAuthor.Recipe)
+          .Returns(fakeRecipe);
+      return fakeAuthor;
+  }
+  ```
+
+  > **💡 DOCS NOTE: this is default, but depending on your domain ops, you might have a domain method that does the action for you, in which case, you won't want these to be virtual. For example, Recipe might have `SetAuthor` or `AddIngredient` methods and you wouldn't want those FKs to be virtual**
+
+* Add `FakeItEasy` and `FakeItEasyAnalyzer` to unit test project
+
+* Colocate DTOs with entities by default. Can be moved to shared kernel when needed
+
+* Default db provider set to postgres
+
+* Removed `?`'s on strings in  `BaseEntity` 
+
+* Update integration test consumer registration to non-obsolete model
+
+* Testing cleanup
+
+* Performance optimizations for integration and functional tests
+
+  * Integration tests will only wipe the db using checkpoint at the begining of the entire fixture run, not after each test. This affects how assersions can and should be made
+  * Unit tests have parallelization
+
+* Removed sort integration tests
+
+* Messages get a class for better typing as well as an interface.
+  
+* Add postman client to example scaffolding
+
+* Add support for offline access and client secret requirement settings for client credentials clients
+
+* Automatically add a `SuperAdmin` role claim to machines
+
+* Updated services to use Newtonsoft to keep support for patchdocs. `System.Text.Json` is still available if patchdocs aren't needed for a project.
+
+* Integration Test `TestBase` has global autobogus settings
+
+* Permission and role validations are not case sensitive
+
+* Added `client_role` to `UserPolicyHandler` role check to accomodate machines with a new scaffolded test.
+
+  * Machine example:
+
+    ```c#
+    new Client
+    {
+      ClientId = "recipe_management.postman",
+      ClientName = "RecipeManagement Postman",
+      ClientSecrets = { new Secret("secret".Sha256()) },
+    
+      AllowedGrantTypes = GrantTypes.ClientCredentials,
+      AllowOfflineAccess = true,
+      RequireClientSecret = true,
+      Claims = new List<ClientClaim>() { new(JwtClaimTypes.Role, "SuperAdmin") },
+    
+      RedirectUris = { "https://oauth.pstmn.io/v1/callback" },
+      AllowedScopes = { "openid", "profile", "role", "recipe_management" }
+    },
+    ```
+
+
+### Fixed
+
+* Sql server connection strings to docker will trust the cert: `TrustServerCertificate=True;`
+
+
+
+## [0.14.3] - 04/27/2022
+
+### Fixed
+
+- Nav link quote issue in BFF
+- Lingering recipe route in BFF
+- Added `useQuery` import to GET api in BFF
+
+## [0.14.2] - 04/22/2022
+
+### Fixed
+
+- Bff conditional check
+
+## [0.14.1] - 04/19/2022
+
+### Fixed
+
+- Missing dependencies (#73)
+- LaunchSettings Casing (#72)
+
+## [0.14.0] - 04/16/2022
+
+### Added
+
+* A `Dockerfile` and `.dockerignore` will be added to each bounded context automatically (except BFFs)
 
 * A `docker-compose.yaml` will be added to your solution root by default for local development
-  * Just run `docker-compose up --build` in your project root
+  * Just run `docker-compose up --build` to spin up your databases (and RMQ if needed)
 
   * Then set an env and apply migrations. For a postgres example:
     * env
@@ -31,20 +209,93 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
       export ASPNETCORE_ENVIRONMENT=anything
       ```
     
-    * `dotnet ef database update --connection "Host=localhost;Port=3125;Database=dev_recipemanagement;Username=postgres;Password=postgres"`
+    * `dotnet ef database update` or  `dotnet ef database update --connection "Host=localhost;Port=3125;Database=dev_recipemanagement;Username=postgres;Password=postgres"`
     
-  * Default settings can be overriden using a `DockerConfig` object on an `ApiTemplate`
-
   * `SA` will always be default user for sqlserver so it can work properly
 
   * If no ports are given for api or db, they'll be auto assigned a free port on your machine
 
+  * New `john` user to auth server (with no role)
+  
+  * Login hints for auth server
+  
+  * Minor helper override on fake generators
+  
+  * New `add:bff` command to add a bff to your solution
+  
+  * New `add:bffentity` command to add entities to your bff
+  
+  * Basic unit test scaffolding for create and update methods
+  
+  * Unit tests for updating rolepermissions
+
 
 ### Updated
 
-- Initial commit will use system git user and email as author.
-  - **DOCS:** Can be toggled off to use a generic `Craftsman` author if desired using a `UseSystemGitUser` boolean on your Domain Template
+- Fixed bug in `Add` feature that had a chained action after `ProjectTo`. They will now be filtered like so:
+
+  ```c#
+  var {entityNameLowercase}List = await _db.{entity.Plural}
+  	.AsNoTracking()
+   	.FirstOrDefaultAsync({entity.Lambda} => {entity.Lambda}.{primaryKeyPropName} == {entityNameLowercase}.{primaryKeyPropName}, cancellationToken);
+  
+  return _mapper.Map<{readDto}>({entityNameLowercase}List);
+  ```
+
+- Removed `ProjectTo` from `GetRecord` feature in favor of direct mapper.
+
+- Initial commit will use system git user and email as author. Courtesy of @sshquack
+
 - `Id` on `BaseEntity` is sortable and filterable by default
+
+- Minor logging updates for better json formatting and more information in prod
+
+- GET record, PUT, and DELETE all have typed ids (e.g. `{id:guid}`) on their controllers
+
+- `Development` environment uses a connection string to an actual database now, instead of an in memory db. This can easily be spun up with a `docker-compose` for local development
+
+- Environment is now a singular object that will take in values for local environment variables for development and placed in launch settings and your docker compose. When deploying to other environments, you will use these same environment variables, but pass the appropriate value for that env.
+
+  - Updated auth properties to be under an `AuthSettings` object like we do for broker settings
+  - Removed `ConnectionString` from env. Docker connection will be added automatically in launch settings
+  - Removed `EnvironmentName` as it will always be `Development`
+  - Updated examples to handle new environment setup
+
+- Removed unused mapper from delete feature
+
+- Updated entity property definition with optional `ColumnType` attribute
+
+- Fixed a bug that broke registration of the bus in development env
+
+- Logger modifications
+
+- Cleanup batch add feature
+
+- Updated `Created` response for batch add
+
+- Use entity plural directory for tests
+
+- MassTransit bumped to v8
+
+- Bumped Nuget packages to latest
+
+- Updated checkpoint in test fixture for major version bump
+
+### Removed
+
+- Removed seeders
+
+### Fixed
+
+- Dbcontext for userpolicyhandler uses template (#70)
+- Patch cancellation token added in feature
+- Typo in role permission validation
+
+## [0.13.1] - 02/25/2022
+
+### Fixed
+
+* `add:entity` command will now use the correct solution folder
 
 
 ## [0.13.0] - 01/27/2022

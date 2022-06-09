@@ -1,70 +1,81 @@
-﻿namespace Craftsman.Builders
+﻿namespace Craftsman.Builders;
+
+using System;
+using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
+using System.IO.Abstractions;
+using System.Linq;
+using Domain;
+using Helpers;
+using Services;
+
+public class DbContextBuilder
 {
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System;
-    using System.Collections.Generic;
-    using System.Diagnostics;
-    using System.IO;
-    using System.IO.Abstractions;
-    using System.Linq;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
+    private readonly IFileSystem _fileSystem;
 
-    public class DbContextBuilder
+    public DbContextBuilder(ICraftsmanUtilities utilities, IFileSystem fileSystem)
     {
-        public static void CreateDbContext(string srcDirectory,
-            List<Entity> entities,
-            string dbContextName,
-            string dbProvider,
-            string dbName,
-            NamingConventionEnum namingConventionEnum,
-            bool useSoftDelete,
-            string projectBaseName,
-            IFileSystem fileSystem
-        )
+        _utilities = utilities;
+        _fileSystem = fileSystem;
+    }
+
+    public void CreateDbContext(string srcDirectory,
+        List<Entity> entities,
+        string dbContextName,
+        DbProvider dbProvider,
+        string dbName,
+        string localDbConnection,
+        NamingConventionEnum namingConventionEnum,
+        bool useSoftDelete,
+        string projectBaseName
+    )
+    {
+        var classPath = ClassPathHelper.DbContextClassPath(srcDirectory, $"{dbContextName}.cs", projectBaseName);
+        var data = GetContextFileText(classPath.ClassNamespace, entities, dbContextName, srcDirectory, useSoftDelete, projectBaseName);
+        _utilities.CreateFile(classPath, data);
+
+        RegisterContext(srcDirectory, dbProvider, dbContextName, dbName, localDbConnection, namingConventionEnum, projectBaseName);
+    }
+
+    public static string GetContextFileText(string classNamespace, List<Entity> entities, string dbContextName, string srcDirectory, bool useSoftDelete, string projectBaseName)
+    {
+        var entitiesUsings = "";
+        foreach (var entity in entities)
         {
-            var classPath = ClassPathHelper.DbContextClassPath(srcDirectory, $"{dbContextName}.cs", projectBaseName);
-            var data = GetContextFileText(classPath.ClassNamespace, entities, dbContextName, srcDirectory, useSoftDelete, projectBaseName);
-            Utilities.CreateFile(classPath, data, fileSystem);
-            
-            RegisterContext(srcDirectory, dbProvider, dbContextName, dbName, namingConventionEnum, projectBaseName);
+            var classPath = ClassPathHelper.EntityClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+            entitiesUsings += $"{Environment.NewLine}using {classPath.ClassNamespace};";
         }
+        var servicesClassPath = ClassPathHelper.WebApiServicesClassPath(srcDirectory, "", projectBaseName);
+        var baseEntityClassPath = ClassPathHelper.EntityClassPath(srcDirectory, $"", "", projectBaseName);
 
-        public static string GetContextFileText(string classNamespace, List<Entity> entities, string dbContextName, string srcDirectory, bool useSoftDelete, string projectBaseName)
-        {
-            var entitiesUsings = "";
-            foreach (var entity in entities)
-            {
-                var classPath = ClassPathHelper.EntityClassPath(srcDirectory, "", entity.Plural, projectBaseName);
-                entitiesUsings += $"{Environment.NewLine}using {classPath.ClassNamespace};";
-            }
-            var servicesClassPath = ClassPathHelper.WebApiServicesClassPath(srcDirectory, "", projectBaseName);
-            var baseEntityClassPath = ClassPathHelper.EntityClassPath(srcDirectory, $"", "", projectBaseName);
-
-            var softDelete = useSoftDelete 
-                ? $@"
+        var softDelete = useSoftDelete
+            ? $@"
                     entry.State = EntityState.Modified;
                     entry.Entity.UpdateModifiedProperties(now, _currentUserService?.UserId);
                     entry.Entity.UpdateIsDeleted(true);"
-                : "";            
-            var softDeleteFilterClass = useSoftDelete 
-                ? $@"
+            : "";
+        var softDeleteFilterClass = useSoftDelete
+            ? $@"
 
 {SoftDeleteFilterClass()}"
-                :"";
-            
-            var modelBuilderFilter = useSoftDelete 
-                ? $@"
-            modelBuilder.FilterSoftDeletedRecords();"
-                : "";
-            
-            return @$"namespace {classNamespace};
+            : "";
 
-{entitiesUsings}
+        var modelBuilderFilter = useSoftDelete
+            ? $@"
+        modelBuilder.FilterSoftDeletedRecords();
+        /* any query filters added after this will override soft delete 
+                https://docs.microsoft.com/en-us/ef/core/querying/filters
+                https://github.com/dotnet/efcore/issues/10275
+        */"
+            : "";
+
+        return @$"namespace {classNamespace};
+
 using {baseEntityClassPath.ClassNamespace};
-using {servicesClassPath.ClassNamespace};
+using {servicesClassPath.ClassNamespace};{entitiesUsings}
+using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using System.Linq.Expressions;
@@ -75,11 +86,13 @@ using Microsoft.EntityFrameworkCore.Query;
 public class {dbContextName} : DbContext
 {{
     private readonly ICurrentUserService _currentUserService;
+    private readonly IMediator _mediator;
 
     public {dbContextName}(
-        DbContextOptions<{dbContextName}> options, ICurrentUserService currentUserService) : base(options)
+        DbContextOptions<{dbContextName}> options, ICurrentUserService currentUserService, IMediator mediator) : base(options)
     {{
         _currentUserService = currentUserService;
+        _mediator = mediator;
     }}
 
     #region DbSet Region - Do Not Delete
@@ -92,16 +105,34 @@ public class {dbContextName} : DbContext
         base.OnModelCreating(modelBuilder);{modelBuilderFilter}
     }}
 
-    public override Task<int> SaveChangesAsync(CancellationToken cancellationToken = new())
-    {{
-        UpdateAuditFields();
-        return base.SaveChangesAsync(cancellationToken);
-    }}
-
     public override int SaveChanges()
     {{
         UpdateAuditFields();
-        return base.SaveChanges();
+        var result = base.SaveChanges();
+        _dispatchDomainEvents().GetAwaiter().GetResult();
+        return result;
+    }}
+
+    public override async Task<int> SaveChangesAsync(CancellationToken cancellationToken = new())
+    {{
+        UpdateAuditFields();
+        var result = await base.SaveChangesAsync(cancellationToken);
+        await _dispatchDomainEvents();
+        return result;
+    }}
+    
+    private async Task _dispatchDomainEvents()
+    {{
+        var domainEventEntities = ChangeTracker.Entries<BaseEntity>()
+            .Select(po => po.Entity)
+            .Where(po => po.DomainEvents.Any())
+            .ToArray();
+
+        foreach (var entity in domainEventEntities)
+        {{
+            foreach (var entityDomainEvent in entity.DomainEvents)
+                await _mediator.Publish(entityDomainEvent);
+        }}
     }}
         
     private void UpdateAuditFields()
@@ -126,11 +157,11 @@ public class {dbContextName} : DbContext
         }}
     }}
 }}{softDeleteFilterClass}";
-        }
+    }
 
-        private static string SoftDeleteFilterClass()
-        {
-            return $@"public static class Extensions
+    private static string SoftDeleteFilterClass()
+    {
+        return $@"public static class Extensions
 {{
     public static void FilterSoftDeletedRecords(this ModelBuilder modelBuilder)
     {{
@@ -149,111 +180,118 @@ public class {dbContextName} : DbContext
         }}
     }}
 }}";
+    }
+
+    public static string GetDbSetText(List<Entity> entities)
+    {
+        var dbSetText = "";
+
+        foreach (var entity in entities)
+        {
+            var newLine = entity == entities.LastOrDefault() ? "" : $"{Environment.NewLine}";
+            dbSetText += @$"    public DbSet<{entity.Name}> {entity.Plural} {{ get; set; }}{newLine}";
         }
 
-        public static string GetDbSetText(List<Entity> entities)
-        {
-            var dbSetText = "";
+        return dbSetText;
+    }
 
-            foreach (var entity in entities)
-            {
-                var newLine = entity == entities.LastOrDefault() ? "" : $"{Environment.NewLine}";
-                dbSetText += @$"    public DbSet<{entity.Name}> {entity.Plural} {{ get; set; }}{newLine}";
-            }
+    private void RegisterContext(string srcDirectory, DbProvider dbProvider, string dbContextName, string dbName, string localDbConnection, NamingConventionEnum namingConventionEnum, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.WebApiServiceExtensionsClassPath(srcDirectory, $"{FileNames.GetInfraRegistrationName()}.cs", projectBaseName);
 
-            return dbSetText;
-        }
+        if (!_fileSystem.Directory.Exists(classPath.ClassDirectory))
+            _fileSystem.Directory.CreateDirectory(classPath.ClassDirectory);
 
-        private static void RegisterContext(string srcDirectory, string dbProvider, string dbContextName, string dbName, NamingConventionEnum namingConventionEnum, string projectBaseName)
-        {
-            var classPath = ClassPathHelper.WebApiServiceExtensionsClassPath(srcDirectory, $"{Utilities.GetInfraRegistrationName()}.cs", projectBaseName);
+        if (!_fileSystem.File.Exists(classPath.FullClassPath))
+            throw new FileNotFoundException($"The `{classPath.FullClassPath}` file could not be found.");
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+        var usingDbStatement = GetDbUsingStatement(dbProvider);
+        InstallDbProviderNugetPackages(dbProvider, srcDirectory);
 
-            if (!File.Exists(classPath.FullClassPath))
-                throw new FileNotFoundException($"The `{classPath.FullClassPath}` file could not be found.");
-
-            var usingDbStatement = GetDbUsingStatement(dbProvider);
-            InstallDbProviderNugetPackages(dbProvider, srcDirectory);
-
-            //TODO test for class and another for anything else
-            var namingConvention = namingConventionEnum == NamingConventionEnum.Class
-                ? ""
-                : @$"
+        //TODO test for class and another for anything else
+        var namingConvention = namingConventionEnum == NamingConventionEnum.Class
+            ? ""
+            : @$"
                             .{namingConventionEnum.ExtensionMethod()}()";
-            
-            var tempPath = $"{classPath.FullClassPath}temp";
-            using (var input = File.OpenText(classPath.FullClassPath))
+
+        var tempPath = $"{classPath.FullClassPath}temp";
+        using (var input = _fileSystem.File.OpenText(classPath.FullClassPath))
+        {
+            using var output = _fileSystem.File.CreateText(tempPath);
             {
-                using (var output = new StreamWriter(tempPath))
+                string line;
+                while (null != (line = input.ReadLine()))
                 {
-                    string line;
-                    while (null != (line = input.ReadLine()))
+                    var newText = $"{line}";
+                    if (line.Contains("// DbContext -- Do Not Delete")) // abstract this to a constants file?
                     {
-                        var newText = $"{line}";
-                        if (line.Contains("// DbContext -- Do Not Delete")) // abstract this to a constants file?
-                        {
-                            newText += @$"
-        if (env.IsEnvironment(LocalConfig.FunctionalTestingEnvName) || env.IsDevelopment())
+                        newText += @$"
+        if (env.IsEnvironment(LocalConfig.FunctionalTestingEnvName))
         {{
             services.AddDbContext<{dbContextName}>(options =>
                 options.UseInMemoryDatabase($""{dbName ?? dbContextName}""));
         }}
         else
         {{
+            var connectionString = Environment.GetEnvironmentVariable(""DB_CONNECTION_STRING"");
+            if(string.IsNullOrEmpty(connectionString))
+            {{
+                // this makes local migrations easier to manage. feel free to refactor if desired.
+                connectionString = env.IsDevelopment() 
+                    ? ""{localDbConnection}""
+                    : throw new Exception(""DB_CONNECTION_STRING environment variable is not set."");
+            }}
+
             services.AddDbContext<{dbContextName}>(options =>
-                options.{usingDbStatement}(
-                    Environment.GetEnvironmentVariable(""DB_CONNECTION_STRING"") ?? ""placeholder-for-migrations"",
+                options.{usingDbStatement}(connectionString,
                     builder => builder.MigrationsAssembly(typeof({dbContextName}).Assembly.FullName)){namingConvention});
         }}";
-                        }
-
-                        output.WriteLine(newText);
                     }
+
+                    output.WriteLine(newText);
                 }
             }
-
-            // delete the old file and set the name of the new one to the original name
-            File.Delete(classPath.FullClassPath);
-            File.Move(tempPath, classPath.FullClassPath);
         }
 
-        private static void InstallDbProviderNugetPackages(string provider, string srcDirectory)
+        // delete the old file and set the name of the new one to the original name
+        _fileSystem.File.Delete(classPath.FullClassPath);
+        _fileSystem.File.Move(tempPath, classPath.FullClassPath);
+    }
+
+    private static void InstallDbProviderNugetPackages(DbProvider provider, string srcDirectory)
+    {
+        var installCommand = $"add Infrastructure.Persistence{Path.DirectorySeparatorChar}Infrastructure.Persistence.csproj package Microsoft.EntityFrameworkCore.SqlServer --version 5.0.0";
+
+        if (DbProvider.Postgres == provider)
+            installCommand = $"add Infrastructure.Persistence{Path.DirectorySeparatorChar}Infrastructure.Persistence.csproj package npgsql.entityframeworkcore.postgresql  --version 5.0.0";
+        //else if (Enum.GetName(typeof(DbProvider), DbProvider.MySql) == provider)
+        //    installCommand = $"add Infrastructure.Persistence{Path.DirectorySeparatorChar}Infrastructure.Persistence.csproj package Pomelo.EntityFrameworkCore.MySql";
+
+        var process = new Process
         {
-            var installCommand = $"add Infrastructure.Persistence{Path.DirectorySeparatorChar}Infrastructure.Persistence.csproj package Microsoft.EntityFrameworkCore.SqlServer --version 5.0.0";
-
-            if (Enum.GetName(typeof(DbProvider), DbProvider.Postgres) == provider)
-                installCommand = $"add Infrastructure.Persistence{Path.DirectorySeparatorChar}Infrastructure.Persistence.csproj package npgsql.entityframeworkcore.postgresql  --version 5.0.0";
-            //else if (Enum.GetName(typeof(DbProvider), DbProvider.MySql) == provider)
-            //    installCommand = $"add Infrastructure.Persistence{Path.DirectorySeparatorChar}Infrastructure.Persistence.csproj package Pomelo.EntityFrameworkCore.MySql";
-
-            var process = new Process
+            StartInfo = new ProcessStartInfo
             {
-                StartInfo = new ProcessStartInfo
-                {
-                    FileName = "dotnet",
-                    Arguments = installCommand,
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = false,
-                    WorkingDirectory = srcDirectory
-                }
-            };
+                FileName = "dotnet",
+                Arguments = installCommand,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                UseShellExecute = false,
+                CreateNoWindow = false,
+                WorkingDirectory = srcDirectory
+            }
+        };
 
-            process.Start();
-            process.WaitForExit();
-        }
+        process.Start();
+        process.WaitForExit();
+    }
 
-        private static object GetDbUsingStatement(string provider)
-        {
-            if (Enum.GetName(typeof(DbProvider), DbProvider.Postgres) == provider)
-                return "UseNpgsql";
-            //else if (Enum.GetName(typeof(DbProvider), DbProvider.MySql) == provider)
-            //    return "UseMySql";
+    private static object GetDbUsingStatement(DbProvider provider)
+    {
+        if (DbProvider.Postgres == provider)
+            return "UseNpgsql";
+        //else if (Enum.GetName(typeof(DbProvider), DbProvider.MySql) == provider)
+        //    return "UseMySql";
 
-            return "UseSqlServer";
-        }
+        return "UseSqlServer";
     }
 }

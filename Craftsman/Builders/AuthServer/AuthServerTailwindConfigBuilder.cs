@@ -1,25 +1,27 @@
-﻿namespace Craftsman.Builders.AuthServer
-{
-    using System;
-    using System.IO.Abstractions;
-    using System.Linq;
-    using Enums;
-    using Helpers;
-    using Models;
-    using static Helpers.ConstMessages;
+﻿namespace Craftsman.Builders.AuthServer;
 
-    public class AuthServerTailwindConfigBuilder
+using Helpers;
+using Services;
+
+public class AuthServerTailwindConfigBuilder
+{
+    private readonly ICraftsmanUtilities _utilities;
+
+    public AuthServerTailwindConfigBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateTailwindConfig(string projectDirectory, string authServerProjectName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.AuthServerTailwindConfigClassPath(projectDirectory, "tailwind.config.js", authServerProjectName);
-            var fileText = GetPostCssText();
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
-        
-        public static string GetPostCssText()
-        {
-            return @$"const colors = require('tailwindcss/colors')
+        _utilities = utilities;
+    }
+
+    public void CreateTailwindConfig(string projectDirectory, string authServerProjectName)
+    {
+        var classPath = ClassPathHelper.AuthServerTailwindConfigClassPath(projectDirectory, "tailwind.config.js", authServerProjectName);
+        var fileText = GetPostCssText();
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    public static string GetPostCssText()
+    {
+        return @$"const colors = require('tailwindcss/colors')
 
 module.exports = {{
   purge: [""./**/*.cshtml"",""../**/*.cshtml"", ""../**/*.html"",""./**/*.html"", ""./**/*.razor""],
@@ -38,6 +40,5 @@ module.exports = {{
     require('@tailwindcss/forms'),
   ],
 }}";
-        }
     }
 }

@@ -1,30 +1,33 @@
-﻿namespace Craftsman.Builders.Tests.IntegrationTests
+﻿namespace Craftsman.Builders.Tests.IntegrationTests;
+
+using Craftsman.Services;
+using Domain;
+using Helpers;
+
+public class ConsumerTestBuilder
 {
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.IO.Abstractions;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class ConsumerTestBuilder
+    public ConsumerTestBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateTests(string solutionDirectory, string testDirectory, string srcDirectory, Consumer consumer, string projectBaseName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.FeatureTestClassPath(testDirectory, $"{consumer.ConsumerName}Tests.cs", "EventHandlers", projectBaseName);
-            var fileText = WriteTestFileText(solutionDirectory, testDirectory, srcDirectory, classPath, consumer, projectBaseName);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
+        _utilities = utilities;
+    }
 
-        private static string WriteTestFileText(string solutionDirectory, string testDirectory, string srcDirectory, ClassPath classPath, Consumer consumer, string projectBaseName)
-        {
-            var testFixtureName = Utilities.GetIntegrationTestFixtureName();
-            var testUtilClassPath = ClassPathHelper.IntegrationTestUtilitiesClassPath(testDirectory, projectBaseName, "");
-            var consumerClassPath = ClassPathHelper.ConsumerFeaturesClassPath(srcDirectory, "", consumer.DomainDirectory, projectBaseName);
-            
-            var messagesClassPath = ClassPathHelper.MessagesClassPath(solutionDirectory, "");
-            return @$"namespace {classPath.ClassNamespace};
+    public void CreateTests(string solutionDirectory, string testDirectory, string srcDirectory, Consumer consumer, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.FeatureTestClassPath(testDirectory, $"{consumer.ConsumerName}Tests.cs", "EventHandlers", projectBaseName);
+        var fileText = WriteTestFileText(solutionDirectory, testDirectory, srcDirectory, classPath, consumer, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    private static string WriteTestFileText(string solutionDirectory, string testDirectory, string srcDirectory, ClassPath classPath, Consumer consumer, string projectBaseName)
+    {
+        var testFixtureName = FileNames.GetIntegrationTestFixtureName();
+        var testUtilClassPath = ClassPathHelper.IntegrationTestUtilitiesClassPath(testDirectory, projectBaseName, "");
+        var consumerClassPath = ClassPathHelper.ConsumerFeaturesClassPath(srcDirectory, "", consumer.DomainDirectory, projectBaseName);
+
+        var messagesClassPath = ClassPathHelper.MessagesClassPath(solutionDirectory, "");
+        return @$"namespace {classPath.ClassNamespace};
 
 using FluentAssertions;
 using NUnit.Framework;
@@ -42,15 +45,14 @@ public class {consumer.ConsumerName}Tests : TestBase
 {{
     {ConsumerTest(consumer)}
 }}";
-        }
+    }
 
-        private static string ConsumerTest(Consumer consumer)
-        {
-            var lowerConsumerName = consumer.ConsumerName.ToLower();
-            var messageName = consumer.MessageName;
+    private static string ConsumerTest(Consumer consumer)
+    {
+        var messageName = FileNames.MessageInterfaceName(consumer.MessageName);
 
-            return $@"[Test]
-    public async Task {lowerConsumerName}_can_consume_{consumer.MessageName}_message()
+        return $@"[Test]
+    public async Task can_consume_{consumer.MessageName}_message()
     {{
         // Arrange
         var message = new Mock<{messageName}>();
@@ -62,6 +64,5 @@ public class {consumer.ConsumerName}Tests : TestBase
         (await IsConsumed<{messageName}>()).Should().Be(true);
         (await IsConsumed<{messageName}, {consumer.ConsumerName}>()).Should().Be(true);
     }}";
-        }
     }
 }

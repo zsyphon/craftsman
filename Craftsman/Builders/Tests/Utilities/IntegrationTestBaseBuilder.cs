@@ -1,37 +1,30 @@
-﻿namespace Craftsman.Builders.Tests.Utilities
+﻿namespace Craftsman.Builders.Tests.Utilities;
+
+using Domain;
+using Helpers;
+using Services;
+
+public class IntegrationTestBaseBuilder
 {
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using System;
-    using System.IO.Abstractions;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class IntegrationTestBaseBuilder
+    public IntegrationTestBaseBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateBase(string solutionDirectory, string projectBaseName, string provider, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.IntegrationTestProjectRootClassPath(solutionDirectory, "TestBase.cs", projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!fileSystem.Directory.Exists(classPath.ClassDirectory))
-                fileSystem.Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateBase(string solutionDirectory, string projectBaseName, DbProvider provider)
+    {
+        var classPath = ClassPathHelper.IntegrationTestProjectRootClassPath(solutionDirectory, "TestBase.cs", projectBaseName);
+        var fileText = GetBaseText(classPath.ClassNamespace, provider);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (fileSystem.File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
-
-            using (var fs = fileSystem.File.Create(classPath.FullClassPath))
-            {
-                var data = "";
-                data = GetBaseText(classPath.ClassNamespace, provider);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
-
-        public static string GetBaseText(string classNamespace, string provider)
-        {
-            var testFixtureName = Utilities.GetIntegrationTestFixtureName();
-            var equivalency = Enum.GetName(typeof(DbProvider), DbProvider.Postgres) == provider
-                ? $@"
+    public static string GetBaseText(string classNamespace, DbProvider provider)
+    {
+        var testFixtureName = FileNames.GetIntegrationTestFixtureName();
+        var equivalency = provider == DbProvider.Postgres
+            ? $@"
 
         // close to equivalency required to reconcile precision differences between EF and Postgres
         AssertionOptions.AssertEquivalencyUsing(options => 
@@ -45,24 +38,33 @@
 
             return options;
         }});"
-                : null;
+            : null;
 
-            return @$"namespace {classNamespace};
+        return @$"namespace {classNamespace};
 
 using FluentAssertions;
 using NUnit.Framework;
 using System.Threading.Tasks;
+using AutoBogus;
 using FluentAssertions.Extensions;
 using static {testFixtureName};
 
 public class TestBase
 {{
     [SetUp]
-    public async Task TestSetUp()
-    {{
-        await ResetState();{equivalency}
+    public Task TestSetUp()
+    {{{equivalency}
+    
+        AutoFaker.Configure(builder =>
+        {{
+            // configure global autobogus settings here
+            builder.WithRecursiveDepth(1)
+                .WithTreeDepth(1)
+                .WithRepeatCount(1);
+        }});
+        
+        return Task.CompletedTask;
     }}
 }}";
-        }
     }
 }

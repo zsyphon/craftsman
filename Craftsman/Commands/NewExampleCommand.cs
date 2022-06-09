@@ -1,135 +1,121 @@
-﻿namespace Craftsman.Commands
+namespace Craftsman.Commands;
+
+using System.IO.Abstractions;
+using Builders;
+using Domain;
+using Helpers;
+using MediatR;
+using Services;
+using Spectre.Console;
+using Spectre.Console.Cli;
+
+public class NewExampleCommand : Command<NewExampleCommand.Settings>
 {
-    using Craftsman.Builders;
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using Spectre.Console;
-    using System;
-    using System.Collections.Generic;
-    using System.IO;
-    using System.IO.Abstractions;
-    using System.Linq;
-    using System.Threading.Tasks;
-    using CommandLine.Text;
-    using static Helpers.ConsoleWriter;
+    private readonly IAnsiConsole _console;
+    private readonly IFileSystem _fileSystem;
+    private readonly IConsoleWriter _consoleWriter;
+    private readonly IDbMigrator _dbMigrator;
+    private readonly IGitService _gitService;
+    private readonly ICraftsmanUtilities _utilities;
+    private readonly IScaffoldingDirectoryStore _scaffoldingDirectoryStore;
+    private readonly IFileParsingHelper _fileParsingHelper;
+    private readonly IMediator _mediator;
 
-    public static class NewExampleCommand
+    public NewExampleCommand(IAnsiConsole console, IFileSystem fileSystem, IConsoleWriter consoleWriter, ICraftsmanUtilities utilities, IScaffoldingDirectoryStore scaffoldingDirectoryStore, IDbMigrator dbMigrator, IGitService gitService, IFileParsingHelper fileParsingHelper, IMediator mediator)
     {
-        public static void Help()
-        {
-            WriteHelpHeader(@$"Description:");
-            WriteHelpText(@$"   Scaffolds out an example project via CLI prompts into the current directory.{Environment.NewLine}");
+        _console = console;
+        _fileSystem = fileSystem;
+        _consoleWriter = consoleWriter;
+        _utilities = utilities;
+        _scaffoldingDirectoryStore = scaffoldingDirectoryStore;
+        _dbMigrator = dbMigrator;
+        _gitService = gitService;
+        _fileParsingHelper = fileParsingHelper;
+        _mediator = mediator;
+    }
 
-            WriteHelpHeader(@$"Usage:");
-            WriteHelpText(@$"   craftsman new:example{Environment.NewLine}");
+    public class Settings : CommandSettings
+    {
+        [CommandArgument(0, "[ProjectName]")]
+        public string ProjectName { get; set; }
+    }
 
-            WriteHelpText(Environment.NewLine);
-            WriteHelpHeader(@$"Example:");
-            WriteHelpText(@$"   craftsman new:example");
-        }
+    public override int Execute(CommandContext context, Settings settings)
+    {
+        var rootDir = _fileSystem.Directory.GetCurrentDirectory();
+        var myEnv = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT");
 
-        public static void Run(string buildSolutionDirectory, IFileSystem fileSystem)
-        {
-            try
-            {
-                var promptResponse = RunPrompt();
-                var templateString = GetExampleDomain(promptResponse.name, promptResponse.type);
-                
-                var domainProject = FileParsingHelper.ReadYamlString<DomainProject>(templateString);
-                var domainDirectory = $"{buildSolutionDirectory}{Path.DirectorySeparatorChar}{domainProject.DomainName}";
-                
-                NewDomainProjectCommand.CreateNewDomainProject(domainDirectory, fileSystem, domainProject);
-                ExampleTemplateBuilder.CreateYamlFile(domainDirectory, templateString, fileSystem);
+        if (myEnv == "Dev")
+            rootDir = _console.Ask<string>("Enter the root directory of your project:");
 
-                AnsiConsole.MarkupLine($"{Environment.NewLine}[bold yellow1]Your example project is project is ready![/]");
-                StarGithubRequest();
-            }
-            catch (Exception e)
-            {
-                if (e is FileAlreadyExistsException
-                    || e is DirectoryAlreadyExistsException
-                    || e is InvalidSolutionNameException
-                    || e is FileNotFoundException
-                    || e is InvalidDbProviderException
-                    || e is InvalidFileTypeException
-                    || e is DataValidationErrorException
-                    || e is SolutiuonNameEntityMatchException)
-                {
-                    WriteError($"{e.Message}");
-                }
-                else
-                {
-                    AnsiConsole.WriteException(e, new ExceptionSettings
-                    {
-                        Format = ExceptionFormats.ShortenEverything | ExceptionFormats.ShowLinks,
-                        Style = new ExceptionStyle
-                        {
-                            Exception = new Style().Foreground(Color.Grey),
-                            Message = new Style().Foreground(Color.White),
-                            NonEmphasized = new Style().Foreground(Color.Cornsilk1),
-                            Parenthesis = new Style().Foreground(Color.Cornsilk1),
-                            Method = new Style().Foreground(Color.Red),
-                            ParameterName = new Style().Foreground(Color.Cornsilk1),
-                            ParameterType = new Style().Foreground(Color.Red),
-                            Path = new Style().Foreground(Color.Red),
-                            LineNumber = new Style().Foreground(Color.Cornsilk1),
-                        }
-                    });
-                }
-            }
-        }
-        private static (ExampleType type, string name) RunPrompt()
-        {
-            AnsiConsole.WriteLine();
-            AnsiConsole.Render(new Rule("[yellow]Create an Example Project[/]").RuleStyle("grey").Centered());
+        var (exampleType, projectName) = RunPrompt(settings.ProjectName);
+        var templateString = GetExampleDomain(projectName, exampleType);
 
-            var typeString = AskExampleType();
-            var exampleType = ExampleType.FromName(typeString, ignoreCase: true);
-            var projectName = AskExampleProjectName();
+        var domainProject = FileParsingHelper.ReadYamlString<DomainProject>(templateString);
 
-            return (exampleType, projectName);
-        }
+        _scaffoldingDirectoryStore.SetSolutionDirectory(rootDir, domainProject.DomainName);
+        var domainCommand = new NewDomainCommand(_console, _fileSystem, _consoleWriter, _utilities, _scaffoldingDirectoryStore, _dbMigrator, _gitService, _fileParsingHelper, _mediator);
+        domainCommand.CreateNewDomainProject(domainProject);
 
-        private static string AskExampleType()
-        {
-            var exampleTypes = ExampleType.List.Select(e => e.Name);
-            
-            return AnsiConsole.Prompt(
-                new SelectionPrompt<string>()
-                    .Title("What [green]type of example[/] do you want to create?")
-                    .PageSize(50)
-                    .AddChoices(exampleTypes)
-            );
-        }
+        new ExampleTemplateBuilder(_utilities).CreateYamlFile(_scaffoldingDirectoryStore.SolutionDirectory,
+            templateString);
+        _console.MarkupLine($"{Environment.NewLine}[bold yellow1]Your example project is project is ready![/]");
 
-        private static string AskExampleProjectName()
-        {
-            return AnsiConsole.Ask<string>("What would you like to name this project (e.g. [green]MyExampleProject[/])?");
-        }
-        
-        private static string GetExampleDomain(string name, ExampleType exampleType)
-        {
-            if (exampleType == ExampleType.Basic)
-                return BasicTemplate(name);
-            if (exampleType == ExampleType.WithAuth)
-                return AuthTemplate(name);
-            if(exampleType == ExampleType.WithBus)
-                return BusTemplate(name);
-            if(exampleType == ExampleType.WithAuthServer) 
-              return AuthServerTemplate(name);
-            if(exampleType == ExampleType.WithForeignKey) 
-              return ForeignKeyTemplate(name);
-            if(exampleType == ExampleType.Complex) 
-              return ComplexTemplate(name);
+       // _consoleWriter.StarGithubRequest();
+        return 0;
+    }
 
-            throw new Exception("Example type was not recognized.");
-        }
-        
-        private static string ForeignKeyTemplate(string name)
-        {
-          return $@"DomainName: {name}
+    private (ExampleType type, string name) RunPrompt(string projectName)
+    {
+        _console.WriteLine();
+        _console.Write(new Rule("[yellow]Create an Example Project[/]").RuleStyle("grey").Centered());
+
+        var typeString = AskExampleType();
+        var exampleType = ExampleType.FromName(typeString, ignoreCase: true);
+        if (string.IsNullOrEmpty(projectName))
+            projectName = AskExampleProjectName();
+
+        return (exampleType, projectName);
+    }
+
+    private string AskExampleType()
+    {
+        var exampleTypes = ExampleType.List.Select(e => e.Name);
+
+        return _console.Prompt(
+            new SelectionPrompt<string>()
+                .Title("What [green]type of example[/] do you want to create?")
+                .PageSize(50)
+                .AddChoices(exampleTypes)
+        );
+    }
+
+    private string AskExampleProjectName()
+    {
+        return _console.Ask<string>("What would you like to name this project (e.g. [green]MyExampleProject[/])?");
+    }
+
+    private static string GetExampleDomain(string name, ExampleType exampleType)
+    {
+        if (exampleType == ExampleType.Basic)
+            return BasicTemplate(name);
+        if (exampleType == ExampleType.WithAuth)
+            return AuthTemplate(name);
+        if (exampleType == ExampleType.WithBus)
+            return BusTemplate(name);
+        if (exampleType == ExampleType.WithAuthServer)
+            return AuthServerTemplate(name);
+        if (exampleType == ExampleType.WithForeignKey)
+            return ForeignKeyTemplate(name);
+        if (exampleType == ExampleType.Complex)
+            return ComplexTemplate(name);
+
+        throw new Exception("Example type was not recognized.");
+    }
+
+    private static string ForeignKeyTemplate(string name)
+    {
+        return $@"DomainName: {name}
 BoundedContexts:
 - ProjectName: RecipeManagement
   Port: 5375
@@ -188,10 +174,17 @@ BoundedContexts:
       BatchPropertyName: RecipeId
       BatchPropertyType: Guid
       ParentEntity: Recipe
-      BatchPropertyDbSetName: Recipes
+      ParentEntityPlural: Recipes
     Properties:
     - Name: Name
       Type: string
+      CanFilter: true
+      CanSort: true
+    - Name: Visibility
+      SmartNames:
+      - Public
+      - Friends Only
+      - Private
       CanFilter: true
       CanSort: true
     - Name: Quantity
@@ -205,11 +198,11 @@ BoundedContexts:
     - Name: RecipeId
       Type: Guid
       ForeignEntityName: Recipe";
-        }
-        
-        private static string ComplexTemplate(string name)
-        {
-          return $@"DomainName: {name}
+    }
+
+    private static string ComplexTemplate(string name)
+    {
+        return $@"DomainName: {name}
 BoundedContexts:
 - ProjectName: RecipeManagement
   Port: 5375
@@ -239,8 +232,19 @@ BoundedContexts:
       Type: string
       CanFilter: true
       CanSort: true
+    - Name: Visibility
+      SmartNames:
+      - Public
+      - Friends Only
+      - Private
+      CanFilter: true
+      CanSort: true
     - Name: Directions
       Type: string
+      CanFilter: true
+      CanSort: true
+    - Name: Rating
+      Type: int?
       CanFilter: true
       CanSort: true
     - Name: Author
@@ -277,7 +281,7 @@ BoundedContexts:
       BatchPropertyName: RecipeId
       BatchPropertyType: Guid
       ParentEntity: Recipe
-      BatchPropertyDbSetName: Recipes
+      ParentEntityPlural: Recipes
     Properties:
     - Name: Name
       Type: string
@@ -294,14 +298,14 @@ BoundedContexts:
     - Name: RecipeId
       Type: Guid
       ForeignEntityName: Recipe
-  Environments:
-    - EnvironmentName: Development
-      Authority: https://localhost:3385
-      Audience: recipe_management
-      AuthorizationUrl: https://localhost:3385/connect/authorize
-      TokenUrl: https://localhost:3385/connect/token
-      ClientId: recipe_management.swagger
-      ClientSecret: 974d6f71-d41b-4601-9a7a-a33081f80687
+  Environment:
+      AuthSettings:
+        Authority: https://localhost:3385
+        Audience: recipe_management
+        AuthorizationUrl: https://localhost:3385/connect/authorize
+        TokenUrl: https://localhost:3385/connect/token
+        ClientId: recipe_management.swagger
+        ClientSecret: 974d6f71-d41b-4601-9a7a-a33081f80687
       BrokerSettings:
         Host: localhost
         VirtualHost: /
@@ -313,7 +317,7 @@ BoundedContexts:
   - EndpointRegistrationMethodName: AddRecipeProducerEndpoint
     ProducerName: AddRecipeProducer
     ExchangeName: recipe-added
-    MessageName: IRecipeAdded
+    MessageName: RecipeAdded
     DomainDirectory: Recipes
     ExchangeType: fanout
     UsesDb: true
@@ -322,18 +326,74 @@ BoundedContexts:
     ConsumerName: AddToBook
     ExchangeName: book-additions
     QueueName: add-recipe-to-book
-    MessageName: IRecipeAdded
+    MessageName: RecipeAdded
     DomainDirectory: Recipes
     ExchangeType: fanout
 Messages:
-- Name: IRecipeAdded
+- Name: RecipeAdded
   Properties:
   - Name: RecipeId
     Type: guid
+Bff:
+  ProjectName: RecipeManagementApp
+  ProxyPort: 4378
+  HeadTitle: Recipe Management App
+  Authority: https://localhost:3385
+  ClientId: recipe_management.bff
+  ClientSecret: 974d6f71-d41b-4601-9a7a-a33081f80687
+  RemoteEndpoints:
+    - LocalPath: /api/recipes
+      ApiAddress: https://localhost:5375/api/recipes
+    - LocalPath: /api/ingredients
+      ApiAddress: https://localhost:5375/api/ingredients
+  BoundaryScopes:
+    - recipe_management
+  Entities:
+  - Name: Recipe
+    Features:
+    - Type: GetList
+    - Type: GetRecord
+    - Type: AddRecord
+    - Type: UpdateRecord
+    - Type: DeleteRecord
+    Properties:
+    - Name: Title
+      Type: string #optional if string
+    - Name: Directions
+    - Name: RecipeSourceLink
+    - Name: Description
+    - Name: Rating
+      Type: number?
+  - Name: Ingredient
+    Features:
+    - Type: GetList
+    - Type: GetRecord
+    - Type: AddRecord
+    - Type: UpdateRecord
+    - Type: DeleteRecord
+    Properties:
+    - Name: Name
+    - Name: Quantity
+    - Name: Measure
+    - Name: RecipeId
 AuthServer:
   Name: AuthServerWithDomain
   Port: 3385
   Clients:
+    - Id: recipe_management.postman
+      Name: RecipeManagement Postman
+      Secrets:
+        - 974d6f71-d41b-4601-9a7a-a33081f84682
+      GrantType: ClientCredentials
+      RedirectUris:
+        - 'https://oauth.pstmn.io/v1/callback'
+      AllowOfflineAccess: true
+      RequireClientSecret: true
+      AllowedScopes:
+        - openid
+        - profile
+        - role
+        - recipe_management #this should match the scope in your boundary's swagger spec
     - Id: recipe_management.swagger
       Name: RecipeManagement Swagger
       Secrets:
@@ -346,6 +406,28 @@ AuthServer:
       AllowedCorsOrigins:
         - 'https://localhost:5375'
       FrontChannelLogoutUri: 'http://localhost:5375/signout-oidc'
+      AllowOfflineAccess: true
+      RequirePkce: true
+      RequireClientSecret: true
+      AllowPlainTextPkce: false
+      AllowedScopes:
+        - openid
+        - profile
+        - role
+        - recipe_management #this should match the scope in your boundary's swagger spec 
+    - Id: recipe_management.bff
+      Name: RecipeManagement BFF
+      Secrets:
+        - 974d6f71-d41b-4601-9a7a-a33081f80687
+      GrantType: Code
+      RedirectUris:
+        - https://localhost:4378/signin-oidc
+      PostLogoutRedirectUris:
+        - https://localhost:4378/signout-callback-oidc
+      AllowedCorsOrigins:
+        - https://localhost:5375
+        - https://localhost:4378
+      FrontChannelLogoutUri: https://localhost:4378/signout-oidc
       AllowOfflineAccess: true
       RequirePkce: true
       RequireClientSecret: true
@@ -369,11 +451,11 @@ AuthServer:
         - openid
         - profile
         - role";
-        }
+    }
 
-        private static string BasicTemplate(string name)
-        {
-            return $@"DomainName: {name}
+    private static string BasicTemplate(string name)
+    {
+        return $@"DomainName: {name}
 BoundedContexts:
 - ProjectName: RecipeManagement
   Port: 5375
@@ -410,12 +492,19 @@ BoundedContexts:
     - Name: ImageLink
       Type: string
       CanFilter: true
+      CanSort: true
+    - Name: Visibility
+      SmartNames:
+      - Public
+      - Friends Only
+      - Private
+      CanFilter: true
       CanSort: true";
-        }
-        
-        private static string AuthTemplate(string name)
-        {
-            return $@"DomainName: {name}
+    }
+
+    private static string AuthTemplate(string name)
+    {
+        return $@"DomainName: {name}
 BoundedContexts:
 - ProjectName: RecipeManagement
   Port: 5375
@@ -459,32 +548,25 @@ BoundedContexts:
       Type: string
       CanFilter: true
       CanSort: true
-  Environments:
-    - EnvironmentName: Development
+    - Name: Visibility
+      SmartNames:
+      - Public
+      - Friends Only
+      - Private
+      CanFilter: true
+      CanSort: true
+  Environment:
+    AuthSettings:
       Authority: https://localhost:5010
       Audience: recipeManagementDev
       AuthorizationUrl: https://localhost:5010/connect/authorize
       TokenUrl: https://localhost:5010/connect/token
-      ClientId: service.client.dev
-    - EnvironmentName: Qa
-      ConnectionString: ""MyQaConnectionString""
-      Authority: https://qaauth.com
-      Audience: recipeManagementQa
-      AuthorizationUrl: https://qaauth.com/connect/authorize
-      TokenUrl: https://qaauth.com/connect/token
-      ClientId: service.client.qa
-    - EnvironmentName: Production
-      ConnectionString: ""MyProdConnectionString""
-      Authority: https://auth.com
-      Audience: recipeManagement
-      AuthorizationUrl: https://auth.com/connect/authorize
-      TokenUrl: https://auth.com/connect/token
       ClientId: service.client";
-        }
+    }
 
-        private static string BusTemplate(string name)
-        {
-            var template = $@"DomainName: {name}
+    private static string BusTemplate(string name)
+    {
+        var template = $@"DomainName: {name}
 BoundedContexts:
 - ProjectName: RecipeManagement
   Port: 5375
@@ -521,8 +603,14 @@ BoundedContexts:
       Type: string
       CanFilter: true
       CanSort: true
-  Environments:
-    - EnvironmentName: Development
+    - Name: Visibility
+      SmartNames:
+      - Public
+      - Friends Only
+      - Private
+      CanFilter: true
+      CanSort: true
+  Environment:
       BrokerSettings:
         Host: localhost
         VirtualHost: /
@@ -534,7 +622,7 @@ BoundedContexts:
   - EndpointRegistrationMethodName: AddRecipeProducerEndpoint
     ProducerName: AddRecipeProducer
     ExchangeName: recipe-added
-    MessageName: IRecipeAdded
+    MessageName: RecipeAdded
     DomainDirectory: Recipes
     ExchangeType: fanout
     UsesDb: true
@@ -543,21 +631,21 @@ BoundedContexts:
     ConsumerName: AddToBook
     ExchangeName: book-additions
     QueueName: add-recipe-to-book
-    MessageName: IRecipeAdded
+    MessageName: RecipeAdded
     DomainDirectory: Recipes
     ExchangeType: fanout
 Messages:
-- Name: IRecipeAdded
+- Name: RecipeAdded
   Properties:
   - Name: RecipeId
     Type: guid";
 
-            return template;
-        }
+        return template;
+    }
 
-        private static string AuthServerTemplate(string name)
-        {
-          return $@"DomainName: {name}
+    private static string AuthServerTemplate(string name)
+    {
+        return $@"DomainName: {name}
 BoundedContexts:
 - ProjectName: RecipeManagement
   Port: 5375
@@ -601,18 +689,73 @@ BoundedContexts:
       Type: string
       CanFilter: true
       CanSort: true
-  Environments:
-  - EnvironmentName: Development
-    Authority: https://localhost:3385
-    Audience: recipe_management
-    AuthorizationUrl: https://localhost:3385/connect/authorize
-    TokenUrl: https://localhost:3385/connect/token
-    ClientId: recipe_management.swagger
-    ClientSecret: 974d6f71-d41b-4601-9a7a-a33081f80687
+    - Name: Rating
+      Type: int?
+      CanFilter: true
+      CanSort: true
+    - Name: Visibility
+      SmartNames:
+      - Public
+      - Friends Only
+      - Private
+      CanFilter: true
+      CanSort: true
+  Environment:
+    AuthSettings:
+      Authority: https://localhost:3385
+      Audience: recipe_management
+      AuthorizationUrl: https://localhost:3385/connect/authorize
+      TokenUrl: https://localhost:3385/connect/token
+      ClientId: recipe_management.swagger
+      ClientSecret: 974d6f71-d41b-4601-9a7a-a33081f80687
+Bff:
+  ProjectName: RecipeManagementApp
+  ProxyPort: 4378
+  HeadTitle: Recipe Management App
+  Authority: https://localhost:3385
+  ClientId: recipe_management.bff
+  ClientSecret: 974d6f71-d41b-4601-9a7a-a33081f80687
+  RemoteEndpoints:
+    - LocalPath: /api/recipes
+      ApiAddress: https://localhost:5375/api/recipes
+  BoundaryScopes:
+    - recipe_management
+  Entities:
+  - Name: Recipe
+    Features:
+    - Type: GetList
+    - Type: GetRecord
+    - Type: AddRecord
+    - Type: UpdateRecord
+    - Type: DeleteRecord
+    Properties:
+    - Name: Title
+      Type: string #optional if string
+    - Name: Directions
+    - Name: RecipeSourceLink
+    - Name: Description
+    - Name: ImageLink
+    - Name: Visibility
+    - Name: Rating
+      Type: number?
 AuthServer:
   Name: AuthServerWithDomain
   Port: 3385
   Clients:
+    - Id: recipe_management.postman
+      Name: RecipeManagement Postman
+      Secrets:
+        - 974d6f71-d41b-4601-9a7a-a33081f84682
+      GrantType: ClientCredentials
+      RedirectUris:
+        - 'https://oauth.pstmn.io/v1/callback'
+      AllowOfflineAccess: true
+      RequireClientSecret: true
+      AllowedScopes:
+        - openid
+        - profile
+        - role
+        - recipe_management #this should match the scope in your boundary's swagger spec
     - Id: recipe_management.swagger
       Name: RecipeManagement Swagger
       Secrets:
@@ -625,6 +768,28 @@ AuthServer:
       AllowedCorsOrigins:
         - 'https://localhost:5375'
       FrontChannelLogoutUri: 'http://localhost:5375/signout-oidc'
+      AllowOfflineAccess: true
+      RequirePkce: true
+      RequireClientSecret: true
+      AllowPlainTextPkce: false
+      AllowedScopes:
+        - openid
+        - profile
+        - role
+        - recipe_management #this should match the scope in your boundary's swagger spec
+    - Id: recipe_management.bff
+      Name: RecipeManagement BFF
+      Secrets:
+        - 974d6f71-d41b-4601-9a7a-a33081f80687
+      GrantType: Code
+      RedirectUris:
+        - https://localhost:4378/signin-oidc
+      PostLogoutRedirectUris:
+        - https://localhost:4378/signout-callback-oidc
+      AllowedCorsOrigins:
+        - https://localhost:5375
+        - https://localhost:4378
+      FrontChannelLogoutUri: https://localhost:4378/signout-oidc
       AllowOfflineAccess: true
       RequirePkce: true
       RequireClientSecret: true
@@ -649,6 +814,5 @@ AuthServer:
         - profile
         - role
 ";
-        }
     }
 }

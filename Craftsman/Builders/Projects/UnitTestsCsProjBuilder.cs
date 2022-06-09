@@ -1,36 +1,29 @@
-﻿namespace Craftsman.Builders.Projects
+﻿namespace Craftsman.Builders.Projects;
+
+using Helpers;
+using Services;
+
+public class UnitTestsCsProjBuilder
 {
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class UnitTestsCsProjBuilder
+    public UnitTestsCsProjBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateTestsCsProj(string solutionDirectory, string projectBaseName)
-        {
-            var classPath = ClassPathHelper.UnitTestProjectClassPath(solutionDirectory, projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateTestsCsProj(string solutionDirectory, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.UnitTestProjectClassPath(solutionDirectory, projectBaseName);
+        _utilities.CreateFile(classPath, GetTestsCsProjFileText(solutionDirectory, projectBaseName));
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
+    public static string GetTestsCsProjFileText(string solutionDirectory, string projectBaseName)
+    {
+        var apiClassPath = ClassPathHelper.WebApiProjectClassPath(solutionDirectory, projectBaseName);
+        var sharedTestClassPath = ClassPathHelper.SharedTestProjectClassPath(solutionDirectory, projectBaseName);
 
-            using (FileStream fs = File.Create(classPath.FullClassPath))
-            {
-                var data = "";
-                data = GetTestsCsProjFileText(solutionDirectory, projectBaseName);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
-
-        public static string GetTestsCsProjFileText(string solutionDirectory, string projectBaseName)
-        {
-            var apiClassPath = ClassPathHelper.WebApiProjectClassPath(solutionDirectory, projectBaseName);
-            var sharedTestClassPath = ClassPathHelper.SharedTestProjectClassPath(solutionDirectory, projectBaseName);
-
-            return @$"<Project Sdk=""Microsoft.NET.Sdk"">
+        return @$"<Project Sdk=""Microsoft.NET.Sdk"">
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -42,13 +35,18 @@
   <ItemGroup>
     <PackageReference Include=""Microsoft.AspNetCore.Mvc.Testing"" Version=""6.0.0"" />
     <PackageReference Include=""AutoBogus"" Version=""2.13.1"" />
-    <PackageReference Include=""Bogus"" Version=""34.0.1"" />
-    <PackageReference Include=""FluentAssertions"" Version=""5.10.3"" />
-    <PackageReference Include=""Moq"" Version=""4.16.1"" />
-    <PackageReference Include=""NSubstitute"" Version=""4.2.2"" />
-    <PackageReference Include=""NUnit"" Version=""3.13.2"" />
-    <PackageReference Include=""NUnit3TestAdapter"" Version=""4.1.0"" />
-    <PackageReference Include=""Microsoft.NET.Test.Sdk"" Version=""17.0.0"" />
+    <PackageReference Include=""Bogus"" Version=""34.0.2"" />
+    <PackageReference Include=""FakeItEasy"" Version=""7.3.1"" />
+    <PackageReference Include=""FakeItEasy.Analyzer.CSharp"" Version=""6.1.0"">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include=""FluentAssertions"" Version=""6.6.0"" />
+    <PackageReference Include=""Moq"" Version=""4.17.2"" />
+    <PackageReference Include=""NSubstitute"" Version=""4.3.0"" />
+    <PackageReference Include=""NUnit"" Version=""3.13.3"" />
+    <PackageReference Include=""NUnit3TestAdapter"" Version=""4.2.1"" />
+    <PackageReference Include=""Microsoft.NET.Test.Sdk"" Version=""17.1.0"" />
   </ItemGroup>
 
   <ItemGroup>
@@ -57,6 +55,5 @@
   </ItemGroup>
 
 </Project>";
-        }
     }
 }

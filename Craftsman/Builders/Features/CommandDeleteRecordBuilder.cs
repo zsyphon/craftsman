@@ -1,63 +1,50 @@
-﻿namespace Craftsman.Builders.Features
+﻿namespace Craftsman.Builders.Features;
+
+using Domain;
+using Helpers;
+using Services;
+
+public class CommandDeleteRecordBuilder
 {
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class CommandDeleteRecordBuilder
+    public CommandDeleteRecordBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateCommand(string solutionDirectory, string srcDirectory, Entity entity, string contextName, string projectBaseName)
-        {
-            var classPath = ClassPathHelper.FeaturesClassPath(srcDirectory, $"{Utilities.DeleteEntityFeatureClassName(entity.Name)}.cs", entity.Plural, projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateCommand(string srcDirectory, Entity entity, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.FeaturesClassPath(srcDirectory, $"{FileNames.DeleteEntityFeatureClassName(entity.Name)}.cs", entity.Plural, projectBaseName);
+        var fileText = GetCommandFileText(classPath.ClassNamespace, entity, srcDirectory, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
+    public static string GetCommandFileText(string classNamespace, Entity entity, string srcDirectory, string projectBaseName)
+    {
+        var className = FileNames.DeleteEntityFeatureClassName(entity.Name);
+        var deleteCommandName = FileNames.CommandDeleteName(entity.Name);
 
-            using (FileStream fs = File.Create(classPath.FullClassPath))
-            {
-                var data = "";
-                data = GetCommandFileText(classPath.ClassNamespace, entity, contextName, solutionDirectory, srcDirectory, projectBaseName);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
+        var primaryKeyPropType = Entity.PrimaryKeyProperty.Type;
+        var primaryKeyPropName = Entity.PrimaryKeyProperty.Name;
+        var entityNameLowercase = entity.Name.LowercaseFirstLetter();
+        var repoInterface = FileNames.EntityRepositoryInterface(entity.Name);
+        var repoInterfaceProp = $"{entity.Name.LowercaseFirstLetter()}Repository";
 
-        public static string GetCommandFileText(string classNamespace, Entity entity, string contextName, string solutionDirectory, string srcDirectory, string projectBaseName)
-        {
-            var className = Utilities.DeleteEntityFeatureClassName(entity.Name);
-            var deleteCommandName = Utilities.CommandDeleteName(entity.Name);
+        var entityServicesClassPath = ClassPathHelper.EntityServicesClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var servicesClassPath = ClassPathHelper.WebApiServicesClassPath(srcDirectory, "", projectBaseName);
 
-            var primaryKeyPropType = Entity.PrimaryKeyProperty.Type;
-            var primaryKeyPropName = Entity.PrimaryKeyProperty.Name;
-            var entityNameLowercase = entity.Name.LowercaseFirstLetter();
+        return @$"namespace {classNamespace};
 
-            var entityClassPath = ClassPathHelper.EntityClassPath(srcDirectory, "", entity.Plural, projectBaseName);
-            var dtoClassPath = ClassPathHelper.DtoClassPath(solutionDirectory, "", entity.Name, projectBaseName);
-            var exceptionsClassPath = ClassPathHelper.ExceptionsClassPath(srcDirectory, "");
-            var contextClassPath = ClassPathHelper.DbContextClassPath(srcDirectory, "", projectBaseName);
-
-            return @$"namespace {classNamespace};
-
-using {entityClassPath.ClassNamespace};
-using {dtoClassPath.ClassNamespace};
-using {exceptionsClassPath.ClassNamespace};
-using {contextClassPath.ClassNamespace};
-using AutoMapper;
-using AutoMapper.QueryableExtensions;
+using {entityServicesClassPath.ClassNamespace};
+using {servicesClassPath.ClassNamespace};
 using MediatR;
-using Microsoft.EntityFrameworkCore;
-using System.Threading;
-using System.Threading.Tasks;
 
 public static class {className}
 {{
     public class {deleteCommandName} : IRequest<bool>
     {{
-        public {primaryKeyPropType} {primaryKeyPropName} {{ get; set; }}
+        public readonly {primaryKeyPropType} {primaryKeyPropName};
 
         public {deleteCommandName}({primaryKeyPropType} {entityNameLowercase})
         {{
@@ -67,30 +54,24 @@ public static class {className}
 
     public class Handler : IRequestHandler<{deleteCommandName}, bool>
     {{
-        private readonly {contextName} _db;
-        private readonly IMapper _mapper;
+        private readonly {repoInterface} _{repoInterfaceProp};
+        private readonly IUnitOfWork _unitOfWork;
 
-        public Handler({contextName} db, IMapper mapper)
+        public Handler({repoInterface} {repoInterfaceProp}, IUnitOfWork unitOfWork)
         {{
-            _mapper = mapper;
-            _db = db;
+            _{repoInterfaceProp} = {repoInterfaceProp};
+            _unitOfWork = unitOfWork;
         }}
 
         public async Task<bool> Handle({deleteCommandName} request, CancellationToken cancellationToken)
         {{
-            var recordToDelete = await _db.{entity.Plural}
-                .FirstOrDefaultAsync({entity.Lambda} => {entity.Lambda}.{primaryKeyPropName} == request.{primaryKeyPropName}, cancellationToken);
+            var recordToDelete = await _{repoInterfaceProp}.GetById(request.Id, cancellationToken: cancellationToken);
 
-            if (recordToDelete == null)
-                throw new NotFoundException(""{entity.Name}"", request.{primaryKeyPropName});
-
-            _db.{entity.Plural}.Remove(recordToDelete);
-            await _db.SaveChangesAsync(cancellationToken);
-
+            _{repoInterfaceProp}.Remove(recordToDelete);
+            await _unitOfWork.CommitChanges(cancellationToken);
             return true;
         }}
     }}
 }}";
-        }
     }
 }

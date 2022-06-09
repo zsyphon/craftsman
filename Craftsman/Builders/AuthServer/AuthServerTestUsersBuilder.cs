@@ -1,25 +1,28 @@
-namespace Craftsman.Builders.AuthServer
-{
-    using System;
-    using System.IO.Abstractions;
-    using System.Linq;
-    using Enums;
-    using Helpers;
-    using Models;
-    using static Helpers.ConstMessages;
+namespace Craftsman.Builders.AuthServer;
 
-    public class AuthServerTestUsersBuilder
+using Helpers;
+using Services;
+using static Helpers.ConstMessages;
+
+public class AuthServerTestUsersBuilder
+{
+    private readonly ICraftsmanUtilities _utilities;
+
+    public AuthServerTestUsersBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateTestModels(string projectDirectory, string authServerProjectName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.AuthServerSeederClassPath(projectDirectory, "TestUsers.cs", authServerProjectName);
-            var fileText = GetTestUserText(classPath.ClassNamespace);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
-        
-        public static string GetTestUserText(string classNamespace)
-        {
-            return @$"{DuendeDisclosure}// Copyright (c) Duende Software. All rights reserved.
+        _utilities = utilities;
+    }
+
+    public void CreateTestModels(string projectDirectory, string authServerProjectName)
+    {
+        var classPath = ClassPathHelper.AuthServerSeederClassPath(projectDirectory, "TestUsers.cs", authServerProjectName);
+        var fileText = GetTestUserText(classPath.ClassNamespace);
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    public static string GetTestUserText(string classNamespace)
+    {
+        return @$"{DuendeDisclosure}// Copyright (c) Duende Software. All rights reserved.
 // See LICENSE in the project root for license information.
 
 
@@ -80,11 +83,26 @@ public class TestUsers
                         new Claim(JwtClaimTypes.WebSite, ""http://bob.com""),
                         new Claim(JwtClaimTypes.Address, JsonSerializer.Serialize(address), IdentityServerConstants.ClaimValueTypes.Json)
                     }}
+                }},
+                new TestUser
+                {{
+                    SubjectId = ""884262290"",
+                    Username = ""john"",
+                    Password = ""john"",
+                    Claims =
+                    {{
+                        new Claim(JwtClaimTypes.Name, ""John Smith""),
+                        new Claim(JwtClaimTypes.GivenName, ""John""),
+                        new Claim(JwtClaimTypes.FamilyName, ""Smith""),
+                        new Claim(JwtClaimTypes.Email, ""JohnSmith@email.com""),
+                        new Claim(JwtClaimTypes.EmailVerified, ""true"", ClaimValueTypes.Boolean),
+                        new Claim(JwtClaimTypes.WebSite, ""http://john.com""),
+                        new Claim(JwtClaimTypes.Address, JsonSerializer.Serialize(address), IdentityServerConstants.ClaimValueTypes.Json)
+                    }}
                 }}
             }};
         }}
     }}
 }}";
-        }
     }
 }

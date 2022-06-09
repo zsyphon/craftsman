@@ -1,39 +1,35 @@
-﻿namespace Craftsman.Builders.Tests.Utilities
+﻿namespace Craftsman.Builders.Tests.Utilities;
+
+using System.IO;
+using Helpers;
+using Services;
+
+public class WebAppFactoryBuilder
 {
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class WebAppFactoryBuilder
+    public WebAppFactoryBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateWebAppFactory(string solutionDirectory, string projectName, string dbContextName, bool addJwtAuthentication)
-        {
-            var classPath = ClassPathHelper.FunctionalTestProjectRootClassPath(solutionDirectory, $"{Utilities.GetWebHostFactoryName()}.cs", projectName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateWebAppFactory(string solutionDirectory, string projectName, string dbContextName, bool addJwtAuthentication)
+    {
+        var classPath = ClassPathHelper.FunctionalTestProjectRootClassPath(solutionDirectory, $"{FileNames.GetWebHostFactoryName()}.cs", projectName);
+        var fileText = GetWebAppFactoryFileText(classPath, dbContextName, solutionDirectory, projectName, addJwtAuthentication);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                File.Delete(classPath.FullClassPath); // saves me from having to make a remover!
+    private static string GetWebAppFactoryFileText(ClassPath classPath, string dbContextName, string solutionDirectory, string projectBaseName, bool addJwtAuthentication)
+    {
+        var webApiClassPath = ClassPathHelper.WebApiProjectRootClassPath(solutionDirectory, "", projectBaseName);
+        var contextClassPath = ClassPathHelper.DbContextClassPath(solutionDirectory, "", projectBaseName);
+        var utilsClassPath = ClassPathHelper.WebApiResourcesClassPath(solutionDirectory, "", projectBaseName);
 
-            using (FileStream fs = File.Create(classPath.FullClassPath))
-            {
-                var data = GetWebAppFactoryFileText(classPath, dbContextName, solutionDirectory, projectName, addJwtAuthentication);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
-
-        private static string GetWebAppFactoryFileText(ClassPath classPath, string dbContextName, string solutionDirectory, string projectBaseName, bool addJwtAuthentication)
-        {
-            var webApiClassPath = ClassPathHelper.WebApiProjectRootClassPath(solutionDirectory, "", projectBaseName);
-            var contextClassPath = ClassPathHelper.DbContextClassPath(solutionDirectory, "", projectBaseName);
-            var utilsClassPath = ClassPathHelper.WebApiResourcesClassPath(solutionDirectory, "", projectBaseName);
-
-            var authUsing = addJwtAuthentication ? $@"
+        var authUsing = addJwtAuthentication ? $@"
 using WebMotions.Fake.Authentication.JwtBearer;" : "";
 
-            var authRegistration = addJwtAuthentication ? $@"
+        var authRegistration = addJwtAuthentication ? $@"
                 // add authentication using a fake jwt bearer
                 services.AddAuthentication(options =>
                 {{
@@ -42,7 +38,7 @@ using WebMotions.Fake.Authentication.JwtBearer;" : "";
                 }}).AddFakeJwtBearer();
 " : "";
 
-            return @$"
+        return @$"
 namespace {classPath.ClassNamespace};
 
 using {contextClassPath.ClassNamespace};
@@ -52,10 +48,11 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Hosting;
 
-public class {Path.GetFileNameWithoutExtension(classPath.FullClassPath)} : WebApplicationFactory<Startup>
+public class {Path.GetFileNameWithoutExtension(classPath.FullClassPath)} : WebApplicationFactory<Program>
 {{
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
+    protected override IHost CreateHost(IHostBuilder builder)
     {{
         builder.UseEnvironment(LocalConfig.FunctionalTestingEnvName);
 
@@ -84,8 +81,9 @@ public class {Path.GetFileNameWithoutExtension(classPath.FullClassPath)} : WebAp
                 db.Database.EnsureCreated();
             }}
         }});
+        
+        return base.CreateHost(builder);
     }}
 }}";
-        }
     }
 }

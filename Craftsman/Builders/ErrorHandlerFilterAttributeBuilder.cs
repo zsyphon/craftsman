@@ -1,24 +1,29 @@
-﻿namespace Craftsman.Builders
+﻿namespace Craftsman.Builders;
+
+using Helpers;
+using Services;
+
+public class ErrorHandlerFilterAttributeBuilder
 {
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using System.IO.Abstractions;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class ErrorHandlerFilterAttributeBuilder
+    public ErrorHandlerFilterAttributeBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateErrorHandlerFilterAttribute(string srcDirectory, string projectBaseName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.WebApiMiddlewareClassPath(srcDirectory, $"ErrorHandlerFilterAttribute.cs", projectBaseName);
-            var fileText = GetErrorHandlerFilterAttributeText(srcDirectory, projectBaseName, classPath.ClassNamespace);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
+        _utilities = utilities;
+    }
 
-        public static string GetErrorHandlerFilterAttributeText(string srcDirectory, string projectBaseName, string classNamespace)
-        {
-            var exceptionsClassPath = ClassPathHelper.ExceptionsClassPath(srcDirectory, "");
+    public void CreateErrorHandlerFilterAttribute(string srcDirectory, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.WebApiMiddlewareClassPath(srcDirectory, $"ErrorHandlerFilterAttribute.cs", projectBaseName);
+        var fileText = GetErrorHandlerFilterAttributeText(srcDirectory, projectBaseName, classPath.ClassNamespace);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            return @$"// source: https://github.com/jasontaylordev/CleanArchitecture/blob/main/src/WebUI/Filters/ApiExceptionFilterAttribute.cs
+    public static string GetErrorHandlerFilterAttributeText(string srcDirectory, string projectBaseName, string classNamespace)
+    {
+        var exceptionsClassPath = ClassPathHelper.ExceptionsClassPath(srcDirectory, "");
+
+        return @$"// source: https://github.com/jasontaylordev/CleanArchitecture/blob/main/src/WebUI/Filters/ApiExceptionFilterAttribute.cs
 
 namespace {classNamespace};
 
@@ -139,6 +144,5 @@ public class ErrorHandlerFilterAttribute : ExceptionFilterAttribute
         context.ExceptionHandled = true;
     }}
 }}";
-        }
     }
 }

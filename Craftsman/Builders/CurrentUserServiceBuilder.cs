@@ -1,29 +1,32 @@
-﻿namespace Craftsman.Builders
-{
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.IO.Abstractions;
-    using System.Text;
+﻿namespace Craftsman.Builders;
 
-    public class CurrentUserServiceBuilder
+using Helpers;
+using Services;
+
+public class CurrentUserServiceBuilder
+{
+    private readonly ICraftsmanUtilities _utilities;
+
+    public CurrentUserServiceBuilder(ICraftsmanUtilities utilities)
     {
-        public static void GetCurrentUserService(string srcDirectory, string projectBaseName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.WebApiServicesClassPath(srcDirectory, "CurrentUserService.cs", projectBaseName);
-            var fileText = GetCurrentUserServiceText(classPath.ClassNamespace);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
-        
-        private static string GetCurrentUserServiceText(string classNamespace)
-        {
-            return @$"namespace {classNamespace};
+        _utilities = utilities;
+    }
+    public void GetCurrentUserService(string srcDirectory, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.WebApiServicesClassPath(srcDirectory, "CurrentUserService.cs", projectBaseName);
+        var fileText = GetCurrentUserServiceText(classPath.ClassNamespace, srcDirectory, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    private static string GetCurrentUserServiceText(string classNamespace, string srcDirectory, string projectBaseName)
+    {
+        var boundaryServiceName = FileNames.BoundaryServiceInterface(projectBaseName);
+
+        return @$"namespace {classNamespace};
 
 using System.Security.Claims;
 
-public interface ICurrentUserService
+public interface ICurrentUserService : {boundaryServiceName}
 {{
     string? UserId {{ get; }}
     ClaimsPrincipal? User {{ get; }}
@@ -41,6 +44,5 @@ public class CurrentUserService : ICurrentUserService
     public string? UserId => _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier);
     public ClaimsPrincipal? User => _httpContextAccessor.HttpContext?.User;
 }}";
-        }
     }
 }

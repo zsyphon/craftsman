@@ -1,36 +1,29 @@
-﻿namespace Craftsman.Builders.Projects
+﻿namespace Craftsman.Builders.Projects;
+
+using Helpers;
+using Services;
+
+public class FunctionalTestsCsProjBuilder
 {
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class FunctionalTestsCsProjBuilder
+    public FunctionalTestsCsProjBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateTestsCsProj(string solutionDirectory, string projectBaseName, bool addJwtAuth)
-        {
-            var classPath = ClassPathHelper.FunctionalTestProjectClassPath(solutionDirectory, projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateTestsCsProj(string solutionDirectory, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.FunctionalTestProjectClassPath(solutionDirectory, projectBaseName);
+        _utilities.CreateFile(classPath, GetTestsCsProjFileText(solutionDirectory, projectBaseName));
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
+    public static string GetTestsCsProjFileText(string solutionDirectory, string projectBaseName)
+    {
+        var webApiClassPath = ClassPathHelper.WebApiProjectClassPath(solutionDirectory, projectBaseName);
+        var sharedTestClassPath = ClassPathHelper.SharedTestProjectClassPath(solutionDirectory, projectBaseName);
 
-            using (FileStream fs = File.Create(classPath.FullClassPath))
-            {
-                var data = "";
-                data = GetTestsCsProjFileText(addJwtAuth, solutionDirectory, projectBaseName);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
-
-        public static string GetTestsCsProjFileText(bool addJwtAuth, string solutionDirectory, string projectBaseName)
-        {
-            var webApiClassPath = ClassPathHelper.WebApiProjectClassPath(solutionDirectory, projectBaseName);
-            var sharedTestClassPath = ClassPathHelper.SharedTestProjectClassPath(solutionDirectory, projectBaseName);
-
-            return @$"<Project Sdk=""Microsoft.NET.Sdk"">
+        return @$"<Project Sdk=""Microsoft.NET.Sdk"">
 
   <PropertyGroup>
     <TargetFramework>net6.0</TargetFramework>
@@ -40,17 +33,18 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include=""Microsoft.AspNetCore.Mvc.Testing"" Version=""6.0.0"" />
     <PackageReference Include=""AutoBogus"" Version=""2.13.1"" />
-    <PackageReference Include=""Bogus"" Version=""34.0.1"" />
+    <PackageReference Include=""Bogus"" Version=""34.0.2"" />
     <PackageReference Include=""Docker.DotNet"" Version=""3.125.5"" />
-    <PackageReference Include=""FluentAssertions"" Version=""5.10.3"" />
-    <PackageReference Include=""MediatR"" Version=""9.0.0"" />
-    <PackageReference Include=""Moq"" Version=""4.16.1"" />
-    <PackageReference Include=""NUnit"" Version=""3.13.2"" />
-    <PackageReference Include=""NUnit3TestAdapter"" Version=""4.1.0"" />
-    <PackageReference Include=""Microsoft.NET.Test.Sdk"" Version=""17.0.0"" />
-    <PackageReference Include=""Respawn"" Version=""4.0.0"" />
+    <PackageReference Include=""FluentAssertions"" Version=""6.6.0"" />
+    <PackageReference Include=""MediatR"" Version=""10.0.1"" />
+    <PackageReference Include=""Moq"" Version=""4.17.2"" />
+    <PackageReference Include=""NUnit"" Version=""3.13.3"" />
+    <PackageReference Include=""NUnit3TestAdapter"" Version=""4.2.1"" />
+    <PackageReference Include=""Microsoft.AspNetCore.Mvc.Testing"" Version=""6.0.4"" />
+    <PackageReference Include=""Microsoft.AspNetCore.Mvc.NewtonsoftJson"" Version=""6.0.4"" />
+    <PackageReference Include=""Microsoft.NET.Test.Sdk"" Version=""17.1.0"" />
+    <PackageReference Include=""Respawn"" Version=""5.0.1"" />
     <PackageReference Include=""WebMotions.Fake.Authentication.JwtBearer"" Version=""6.0.0"" />
   </ItemGroup>
 
@@ -60,6 +54,5 @@
   </ItemGroup>
 
 </Project>";
-        }
     }
 }

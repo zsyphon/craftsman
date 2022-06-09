@@ -1,36 +1,30 @@
-﻿namespace Craftsman.Builders.Tests.Utilities
+﻿namespace Craftsman.Builders.Tests.Utilities;
+
+using Helpers;
+using Services;
+
+public class FunctionalTestBaseBuilder
 {
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using System.IO.Abstractions;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class FunctionalTestBaseBuilder
+    public FunctionalTestBaseBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateBase(string solutionDirectory, string projectBaseName, string dbContextName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.FunctionalTestProjectRootClassPath(solutionDirectory, "TestBase.cs", projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!fileSystem.Directory.Exists(classPath.ClassDirectory))
-                fileSystem.Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateBase(string solutionDirectory, string projectBaseName, string dbContextName)
+    {
+        var classPath = ClassPathHelper.FunctionalTestProjectRootClassPath(solutionDirectory, "TestBase.cs", projectBaseName);
+        var fileText = GetBaseText(classPath.ClassNamespace, solutionDirectory, projectBaseName, dbContextName);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (fileSystem.File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
+    public static string GetBaseText(string classNamespace, string solutionDirectory, string projectBaseName, string dbContextName)
+    {
+        var contextClassPath = ClassPathHelper.DbContextClassPath(solutionDirectory, "", projectBaseName);
+        var apiClassPath = ClassPathHelper.WebApiProjectRootClassPath(solutionDirectory, "", projectBaseName);
 
-            using (var fs = fileSystem.File.Create(classPath.FullClassPath))
-            {
-                var data = "";
-                data = GetBaseText(classPath.ClassNamespace, solutionDirectory, projectBaseName, dbContextName);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
-
-        public static string GetBaseText(string classNamespace, string solutionDirectory, string projectBaseName, string dbContextName)
-        {
-            var contextClassPath = ClassPathHelper.DbContextClassPath(solutionDirectory, "", projectBaseName);
-            var apiClassPath = ClassPathHelper.WebApiProjectRootClassPath(solutionDirectory, "", projectBaseName);
-
-            return @$"namespace {classNamespace};
+        return @$"namespace {classNamespace};
 
 using {contextClassPath.ClassNamespace};
 using {apiClassPath.ClassNamespace};
@@ -43,16 +37,14 @@ using System.Threading.Tasks;
 
 public class TestBase
 {{
-    public static IConfiguration _configuration;
     public static IServiceScopeFactory _scopeFactory;
-    public static WebApplicationFactory<Startup> _factory;
+    public static WebApplicationFactory<Program> _factory;
     public static HttpClient _client;
 
     [SetUp]
     public void TestSetUp()
     {{
-        _factory = new {Utilities.GetWebHostFactoryName()}();
-        _configuration = _factory.Services.GetRequiredService<IConfiguration>();
+        _factory = new {FileNames.GetWebHostFactoryName()}();
         _scopeFactory = _factory.Services.GetRequiredService<IServiceScopeFactory>();
         _client = _factory.CreateClient(new WebApplicationFactoryClientOptions());
     }}
@@ -160,6 +152,5 @@ public class TestBase
         }});
     }}
 }}";
-        }
     }
 }

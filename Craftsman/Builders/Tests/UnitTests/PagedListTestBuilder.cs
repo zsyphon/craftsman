@@ -1,40 +1,36 @@
-﻿namespace Craftsman.Builders.Tests.UnitTests
+﻿namespace Craftsman.Builders.Tests.UnitTests;
+
+using System.IO;
+using Helpers;
+using Services;
+
+public class PagedListTestBuilder
 {
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class PagedListTestBuilder
+    public PagedListTestBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateTests(string srcDirectory, string testDirectory, string projectBaseName)
-        {
-            var classPath = ClassPathHelper.UnitTestWrapperTestsClassPath(testDirectory, $"PagedListTests.cs", projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateTests(string srcDirectory, string testDirectory, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.UnitTestWrapperTestsClassPath(testDirectory, $"PagedListTests.cs", projectBaseName);
+        var fileText = WriteTestFileText(srcDirectory, classPath, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
+    private static string WriteTestFileText(string srcDirectory, ClassPath classPath, string projectBaseName)
+    {
+        var wrapperClassPath = ClassPathHelper.WrappersClassPath(srcDirectory, "", projectBaseName);
 
-            using (FileStream fs = File.Create(classPath.FullClassPath))
-            {
-                var data = WriteTestFileText(srcDirectory, classPath, projectBaseName);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
-
-        private static string WriteTestFileText(string srcDirectory, ClassPath classPath, string projectBaseName)
-        {
-            var wrapperClassPath = ClassPathHelper.WrappersClassPath(srcDirectory, "", projectBaseName);
-
-            return @$"namespace {classPath.ClassNamespace};
+        return @$"namespace {classPath.ClassNamespace};
 
 using {wrapperClassPath.ClassNamespace};
 using FluentAssertions;
 using NUnit.Framework;
 
+[Parallelizable]
 public class {Path.GetFileNameWithoutExtension(classPath.FullClassPath)}
 {{
     [Test]
@@ -71,6 +67,5 @@ public class {Path.GetFileNameWithoutExtension(classPath.FullClassPath)}
         list.TotalPages.Should().Be(3);
     }}
 }}";
-        }
     }
 }

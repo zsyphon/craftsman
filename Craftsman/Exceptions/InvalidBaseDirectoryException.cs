@@ -1,25 +1,24 @@
-﻿namespace Craftsman.Exceptions
+﻿namespace Craftsman.Exceptions;
+
+using System;
+using System.Runtime.Serialization;
+
+[Serializable]
+internal class IsNotBoundedContextDirectoryException : Exception, ICraftsmanException
 {
-    using System;
-    using System.Runtime.Serialization;
-
-    [Serializable]
-    internal class IsNotBoundedContextDirectory : Exception
+    public IsNotBoundedContextDirectoryException() : base($"This is not a valid directory for this operation. Please make sure you are in the bounded context directory for your project (contains 'src' and 'tests' directories).")
     {
-        public IsNotBoundedContextDirectory() : base($"This is not a valid directory for this operation. Please make sure you are in the bounded context directory for your project (contains 'src' and 'tests' directories).")
-        {
-        }
+    }
 
-        public IsNotBoundedContextDirectory(string message) : base(message)
-        {
-        }
+    public IsNotBoundedContextDirectoryException(string message) : base(message)
+    {
+    }
 
-        public IsNotBoundedContextDirectory(string message, Exception innerException) : base(message, innerException)
-        {
-        }
+    public IsNotBoundedContextDirectoryException(string message, Exception innerException) : base(message, innerException)
+    {
+    }
 
-        protected IsNotBoundedContextDirectory(SerializationInfo info, StreamingContext context) : base(info, context)
-        {
-        }
+    protected IsNotBoundedContextDirectoryException(SerializationInfo info, StreamingContext context) : base(info, context)
+    {
     }
 }

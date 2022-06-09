@@ -1,71 +1,59 @@
-﻿namespace Craftsman.Builders.Features
+﻿namespace Craftsman.Builders.Features;
+
+using Domain;
+using Domain.Enums;
+using Helpers;
+using Services;
+
+public class CommandAddRecordBuilder
 {
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class CommandAddRecordBuilder
+    public CommandAddRecordBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateCommand(string solutionDirectory, string srcDirectory, Entity entity, string contextName, string projectBaseName)
-        {
-            var classPath = ClassPathHelper.FeaturesClassPath(srcDirectory, $"{Utilities.AddEntityFeatureClassName(entity.Name)}.cs", entity.Plural, projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateCommand(string solutionDirectory, string srcDirectory, Entity entity, string contextName, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.FeaturesClassPath(srcDirectory, $"{FileNames.AddEntityFeatureClassName(entity.Name)}.cs", entity.Plural, projectBaseName);
+        var fileText = GetCommandFileText(classPath.ClassNamespace, entity, contextName, solutionDirectory, srcDirectory, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
+    public static string GetCommandFileText(string classNamespace, Entity entity, string contextName, string solutionDirectory, string srcDirectory, string projectBaseName)
+    {
+        var className = FileNames.AddEntityFeatureClassName(entity.Name);
+        var addCommandName = FileNames.CommandAddName(entity.Name);
+        var readDto = FileNames.GetDtoName(entity.Name, Dto.Read);
+        var createDto = FileNames.GetDtoName(entity.Name, Dto.Creation);
 
-            using (FileStream fs = File.Create(classPath.FullClassPath))
-            {
-                var data = "";
-                data = GetCommandFileText(classPath.ClassNamespace, entity, contextName, solutionDirectory, srcDirectory, projectBaseName);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
+        var entityName = entity.Name;
+        var entityNameLowercase = entity.Name.LowercaseFirstLetter();
+        var commandProp = $"{entityName}ToAdd";
+        var newEntityProp = $"{entityNameLowercase}ToAdd";
+        var repoInterface = FileNames.EntityRepositoryInterface(entityName);
+        var repoInterfaceProp = $"{entityName.LowercaseFirstLetter()}Repository";
 
-        public static string GetCommandFileText(string classNamespace, Entity entity, string contextName, string solutionDirectory, string srcDirectory, string projectBaseName)
-        {
-            var className = Utilities.AddEntityFeatureClassName(entity.Name);
-            var addCommandName = Utilities.CommandAddName(entity.Name);
-            var readDto = Utilities.GetDtoName(entity.Name, Dto.Read);
-            var createDto = Utilities.GetDtoName(entity.Name, Dto.Creation);
-            var manipulationValidator = Utilities.ValidatorNameGenerator(entity.Name, Validator.Manipulation);
+        var entityClassPath = ClassPathHelper.EntityClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var dtoClassPath = ClassPathHelper.DtoClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var entityServicesClassPath = ClassPathHelper.EntityServicesClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var servicesClassPath = ClassPathHelper.WebApiServicesClassPath(srcDirectory, "", projectBaseName);
 
-            var entityName = entity.Name;
-            var entityNameLowercase = entity.Name.LowercaseFirstLetter();
-            var primaryKeyPropName = Entity.PrimaryKeyProperty.Name;
-            var commandProp = $"{entityName}ToAdd";
-            var newEntityProp = $"{entityNameLowercase}ToAdd";
+        return @$"namespace {classNamespace};
 
-            var entityClassPath = ClassPathHelper.EntityClassPath(srcDirectory, "", entity.Plural, projectBaseName);
-            var dtoClassPath = ClassPathHelper.DtoClassPath(solutionDirectory, "", entity.Name, projectBaseName);
-            var exceptionsClassPath = ClassPathHelper.ExceptionsClassPath(srcDirectory, "");
-            var contextClassPath = ClassPathHelper.DbContextClassPath(srcDirectory, "", projectBaseName);
-            var validatorsClassPath = ClassPathHelper.ValidationClassPath(srcDirectory, "", entity.Plural, projectBaseName);
-
-            return @$"namespace {classNamespace};
-
+using {entityServicesClassPath.ClassNamespace};
 using {entityClassPath.ClassNamespace};
 using {dtoClassPath.ClassNamespace};
-using {exceptionsClassPath.ClassNamespace};
-using {contextClassPath.ClassNamespace};
-using {validatorsClassPath.ClassNamespace};
+using {servicesClassPath.ClassNamespace};
 using AutoMapper;
-using AutoMapper.QueryableExtensions;
 using MediatR;
-using Microsoft.EntityFrameworkCore;
-using System.Threading;
-using System.Threading.Tasks;
 
 public static class {className}
 {{
     public class {addCommandName} : IRequest<{readDto}>
     {{
-        public {createDto} {commandProp} {{ get; set; }}
+        public readonly {createDto} {commandProp};
 
         public {addCommandName}({createDto} {newEntityProp})
         {{
@@ -75,29 +63,28 @@ public static class {className}
 
     public class Handler : IRequestHandler<{addCommandName}, {readDto}>
     {{
-        private readonly {contextName} _db;
+        private readonly {repoInterface} _{repoInterfaceProp};
+        private readonly IUnitOfWork _unitOfWork;
         private readonly IMapper _mapper;
 
-        public Handler({contextName} db, IMapper mapper)
+        public Handler({repoInterface} {repoInterfaceProp}, IUnitOfWork unitOfWork, IMapper mapper)
         {{
             _mapper = mapper;
-            _db = db;
+            _{repoInterfaceProp} = {repoInterfaceProp};
+            _unitOfWork = unitOfWork;
         }}
 
         public async Task<{readDto}> Handle({addCommandName} request, CancellationToken cancellationToken)
         {{
             var {entityNameLowercase} = {entityName}.Create(request.{commandProp});
-            _db.{entity.Plural}.Add({entityNameLowercase});
+            await _{repoInterfaceProp}.Add({entityNameLowercase}, cancellationToken);
 
-            await _db.SaveChangesAsync(cancellationToken);
+            await _unitOfWork.CommitChanges(cancellationToken);
 
-            return await _db.{entity.Plural}
-                .AsNoTracking()
-                .ProjectTo<{readDto}>(_mapper.ConfigurationProvider)
-                .FirstOrDefaultAsync({entity.Lambda} => {entity.Lambda}.{primaryKeyPropName} == {entityNameLowercase}.{primaryKeyPropName}, cancellationToken);
+            var {entityNameLowercase}Added = await _{repoInterfaceProp}.GetById({entityNameLowercase}.Id, cancellationToken: cancellationToken);
+            return _mapper.Map<{readDto}>({entityNameLowercase}Added);
         }}
     }}
 }}";
-        }
     }
 }

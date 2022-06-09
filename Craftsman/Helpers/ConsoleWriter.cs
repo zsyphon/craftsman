@@ -1,89 +1,97 @@
-﻿namespace Craftsman.Helpers
+﻿namespace Craftsman.Helpers;
+
+using System;
+using System.Diagnostics;
+using System.Runtime.InteropServices;
+using Spectre.Console;
+
+public interface IConsoleWriter
 {
-    using Spectre.Console;
-    using System;
-    using System.Diagnostics;
-    using System.Runtime.InteropServices;
+    void WriteInfo(string message);
+    void WriteError(string message);
+    void WriteWarning(string message);
+    void WriteHelpHeader(string message);
+    void WriteHelpText(string message);
+    void WriteLogMessage(string message);
+    //void StarGithubRequest();
+}
 
-    public static class ConsoleWriter
+public class ConsoleWriter : IConsoleWriter
+{
+    private readonly IAnsiConsole _console;
+
+    public ConsoleWriter(IAnsiConsole console)
     {
-        public static void WriteInfo(string message)
-        {
-            AnsiConsole.MarkupLine($"[bold mediumpurple3_1]{message.EscapeMarkup()}[/]");
-        }
+        _console = console;
+    }
 
-        public static void WriteError(string message)
-        {
-            AnsiConsole.MarkupLine($"[bold indianred1]ERROR: {message.EscapeMarkup()}[/]");
-        }
+    public void WriteInfo(string message)
+    {
+        _console.MarkupLine($"[bold mediumpurple3_1]{message.EscapeMarkup()}[/]");
+    }
 
-        public static void WriteWarning(string message)
-        {
-            AnsiConsole.MarkupLine($"[bold olive]WARNING: {message.EscapeMarkup()}[/]");
-        }
+    public void WriteError(string message)
+    {
+        _console.MarkupLine($"[bold indianred1]ERROR: {message.EscapeMarkup()}[/]");
+    }
 
-        public static void WriteHelpHeader(string message)
-        {
-            AnsiConsole.MarkupLine($"[bold olive]{message.EscapeMarkup()}[/]");
-        }
+    public void WriteWarning(string message)
+    {
+        _console.MarkupLine($"[bold olive]WARNING: {message.EscapeMarkup()}[/]");
+    }
 
-        public static void WriteHelpText(string message)
-        {
-            AnsiConsole.MarkupLine($"[green3]{message.EscapeMarkup()}[/]");
-        }
+    public void WriteHelpHeader(string message)
+    {
+        _console.MarkupLine($"[bold olive]{message.EscapeMarkup()}[/]");
+    }
 
-        public static void WriteLogMessage(string message)
-        {
-            AnsiConsole.MarkupLine($"[grey]{message}.[/]");
-        }
+    public void WriteHelpText(string message)
+    {
+        _console.MarkupLine($"[green3]{message.EscapeMarkup()}[/]");
+    }
 
-        public static void WriteGettingStarted(string projectName)
-        {
-            WriteHelpText(@$"{Environment.NewLine}
-    To get started:");
-            WriteHelpText(@$"
-        cd {projectName}
-        dotnet run --project webapi{Environment.NewLine}");
-        }
+    public void WriteLogMessage(string message)
+    {
+        _console.MarkupLine($"[grey]{message}.[/]");
+    }
 
-        public static void StarGithubRequest()
+    public void StarGithubRequest()
+    {
+        WriteHelpText(@$"{Environment.NewLine}Would you like to show some love by starring the repo? {Emoji.Known.Star} (y/n) [n]");
+        var starRepo = Console.ReadKey();
+        if (starRepo.Key == ConsoleKey.Y)
         {
-            WriteHelpText(@$"{Environment.NewLine}Would you like to show some love by starring the repo? {Emoji.Known.Star} (y/n) [n]");
-            var starRepo = Console.ReadKey();
-            if (starRepo.Key == ConsoleKey.Y)
+            WriteHelpText($"{Environment.NewLine}Thanks, it means the world to me! {Emoji.Known.PartyingFace}");
+            var url = "https://github.com/pdevito3/craftsman";
+            try
             {
-                WriteHelpText($"{Environment.NewLine}Thanks, it means the world to me! {Emoji.Known.PartyingFace}");
-                var url = "https://github.com/pdevito3/craftsman";
-                try
+                Process.Start(url);
+            }
+            catch
+            {
+                // hack because of this: https://github.com/dotnet/corefx/issues/10361
+                if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
                 {
-                    Process.Start(url);
+                    url = url.Replace("&", "^&");
+                    Process.Start(new ProcessStartInfo("cmd", $"/c start {url}") { CreateNoWindow = true });
                 }
-                catch
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
                 {
-                    // hack because of this: https://github.com/dotnet/corefx/issues/10361
-                    if (RuntimeInformation.IsOSPlatform(OSPlatform.Windows))
-                    {
-                        url = url.Replace("&", "^&");
-                        Process.Start(new ProcessStartInfo("cmd", $"/c start {url}") { CreateNoWindow = true });
-                    }
-                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.Linux))
-                    {
-                        Process.Start("xdg-open", url);
-                    }
-                    else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
-                    {
-                        Process.Start("open", url);
-                    }
-                    else
-                    {
-                        throw;
-                    }
+                    Process.Start("xdg-open", url);
+                }
+                else if (RuntimeInformation.IsOSPlatform(OSPlatform.OSX))
+                {
+                    Process.Start("open", url);
+                }
+                else
+                {
+                    throw;
                 }
             }
-            else
-            {
-                WriteHelpText($"{Environment.NewLine}I understand, but am not going to pretend I'm not sad about it...");
-            }
+        }
+        else
+        {
+            WriteHelpText($"{Environment.NewLine}I understand, but am not going to pretend I'm not sad about it...");
         }
     }
 }

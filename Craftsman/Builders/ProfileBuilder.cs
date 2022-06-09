@@ -1,55 +1,48 @@
-﻿namespace Craftsman.Builders
+﻿namespace Craftsman.Builders;
+
+using Domain;
+using Domain.Enums;
+using Helpers;
+using Services;
+
+public class ProfileBuilder
 {
-    using Craftsman.Enums;
-    using Craftsman.Exceptions;
-    using Craftsman.Helpers;
-    using Craftsman.Models;
-    using System.IO;
-    using System.Text;
+    private readonly ICraftsmanUtilities _utilities;
 
-    public class ProfileBuilder
+    public ProfileBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateProfile(string solutionDirectory, Entity entity, string projectBaseName)
-        {
-            var classPath = ClassPathHelper.ProfileClassPath(solutionDirectory, $"{Utilities.GetProfileName(entity.Name)}.cs", entity.Plural, projectBaseName);
+        _utilities = utilities;
+    }
 
-            if (!Directory.Exists(classPath.ClassDirectory))
-                Directory.CreateDirectory(classPath.ClassDirectory);
+    public void CreateProfile(string srcDirectory, Entity entity, string projectBaseName)
+    {
+        var classPath = ClassPathHelper.ProfileClassPath(srcDirectory, $"{FileNames.GetProfileName(entity.Name)}.cs", entity.Plural, projectBaseName);
+        var fileText = GetProfileFileText(classPath.ClassNamespace, entity, srcDirectory, projectBaseName);
+        _utilities.CreateFile(classPath, fileText);
+    }
 
-            if (File.Exists(classPath.FullClassPath))
-                throw new FileAlreadyExistsException(classPath.FullClassPath);
+    public static string GetProfileFileText(string classNamespace, Entity entity, string srcDirectory, string projectBaseName)
+    {
+        var entitiesClassPath = ClassPathHelper.EntityClassPath(srcDirectory, "", entity.Plural, projectBaseName);
+        var dtoClassPath = ClassPathHelper.DtoClassPath(srcDirectory, "", entity.Plural, projectBaseName);
 
-            using (FileStream fs = File.Create(classPath.FullClassPath))
-            {
-                var data = "";
-                data = GetProfileFileText(classPath.ClassNamespace, entity, solutionDirectory, projectBaseName);
-                fs.Write(Encoding.UTF8.GetBytes(data));
-            }
-        }
-
-        public static string GetProfileFileText(string classNamespace, Entity entity, string solutionDirectory, string projectBaseName)
-        {
-            var entitiesClassPath = ClassPathHelper.EntityClassPath(solutionDirectory, "", entity.Plural, projectBaseName);
-            var dtoClassPath = ClassPathHelper.DtoClassPath(solutionDirectory, "", entity.Name, projectBaseName);
-
-            return @$"namespace {classNamespace};
+        return @$"namespace {classNamespace};
 
 using {dtoClassPath.ClassNamespace};
 using AutoMapper;
 using {entitiesClassPath.ClassNamespace};
 
-public class {Utilities.GetProfileName(entity.Name)} : Profile
+public class {FileNames.GetProfileName(entity.Name)} : Profile
 {{
-    public {Utilities.GetProfileName(entity.Name)}()
+    public {FileNames.GetProfileName(entity.Name)}()
     {{
         //createmap<to this, from this>
-        CreateMap<{entity.Name}, {Utilities.GetDtoName(entity.Name, Dto.Read)}>()
+        CreateMap<{entity.Name}, {FileNames.GetDtoName(entity.Name, Dto.Read)}>()
             .ReverseMap();
-        CreateMap<{Utilities.GetDtoName(entity.Name, Dto.Creation)}, {entity.Name}>();
-        CreateMap<{Utilities.GetDtoName(entity.Name, Dto.Update)}, {entity.Name}>()
+        CreateMap<{FileNames.GetDtoName(entity.Name, Dto.Creation)}, {entity.Name}>();
+        CreateMap<{FileNames.GetDtoName(entity.Name, Dto.Update)}, {entity.Name}>()
             .ReverseMap();
     }}
 }}";
-        }
     }
 }

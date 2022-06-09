@@ -1,27 +1,30 @@
-﻿namespace Craftsman.Builders.AuthServer
-{
-    using System;
-    using System.IO.Abstractions;
-    using System.Linq;
-    using Enums;
-    using Helpers;
-    using Models;
-    using static Helpers.ConstMessages;
+﻿namespace Craftsman.Builders.AuthServer;
 
-    public class AuthServerExtensionsBuilder
+using Helpers;
+using Services;
+using static Helpers.ConstMessages;
+
+public class AuthServerExtensionsBuilder
+{
+    private readonly ICraftsmanUtilities _utilities;
+
+    public AuthServerExtensionsBuilder(ICraftsmanUtilities utilities)
     {
-        public static void CreateExtensions(string projectDirectory, string authServerProjectName, IFileSystem fileSystem)
-        {
-            var classPath = ClassPathHelper.AuthServerExtensionsClassPath(projectDirectory, "Extensions.cs", authServerProjectName);
-            var fileText = GetExtensionsText(classPath.ClassNamespace, projectDirectory, authServerProjectName);
-            Utilities.CreateFile(classPath, fileText, fileSystem);
-        }
-        
-        private static string GetExtensionsText(string classNamespace, string projectDirectory, string authServerProjectName)
-        {
-            var viewModelClassPath = ClassPathHelper.AuthServerViewModelsClassPath(projectDirectory, "", authServerProjectName);
-            
-            return @$"{DuendeDisclosure}// Copyright (c) Duende Software. All rights reserved.
+        _utilities = utilities;
+    }
+
+    public void CreateExtensions(string projectDirectory, string authServerProjectName)
+    {
+        var classPath = ClassPathHelper.AuthServerExtensionsClassPath(projectDirectory, "Extensions.cs", authServerProjectName);
+        var fileText = GetExtensionsText(classPath.ClassNamespace, projectDirectory, authServerProjectName);
+        _utilities.CreateFile(classPath, fileText);
+    }
+
+    private static string GetExtensionsText(string classNamespace, string projectDirectory, string authServerProjectName)
+    {
+        var viewModelClassPath = ClassPathHelper.AuthServerViewModelsClassPath(projectDirectory, "", authServerProjectName);
+
+        return @$"{DuendeDisclosure}// Copyright (c) Duende Software. All rights reserved.
 // See LICENSE in the project root for license information.
 
 
@@ -51,6 +54,5 @@ public static class Extensions
         return controller.View(viewName, new RedirectViewModel {{ RedirectUrl = redirectUri }});
     }}
 }}";
-        }
     }
 }
